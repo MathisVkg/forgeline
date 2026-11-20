@@ -1,0 +1,12 @@
+{
+  "name": "@forgeline/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@fastify/static": "^10.1.12",
+    "@forgeline/shared": "*",
+    "fastify": "^5.0.0",
+    "node-cron": "^4.0.0"
+  }
+}
