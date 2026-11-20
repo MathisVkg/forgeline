@@ -3,12 +3,16 @@
 
 export const PRICE_RESOURCES = /** @type {const} */ (["commodities_prices_all", "commodities_raw_prices_all"]);
 
-/** Reports older than this are ignored (SPEC §3.2). */
-export const MAX_AGE_SEC = 7 * 24 * 3600;
+/** Reports older than these are ignored (SPEC §3.2). */
+export const REFINED_MAX_AGE_DAYS = 7;
+export const RAW_MAX_AGE_DAYS = 60;
+const DAY_SEC = 24 * 3600;
+/** Default max age for averagePrices (refined rule). */
+export const MAX_AGE_SEC = REFINED_MAX_AGE_DAYS * DAY_SEC;
 
 /**
  * @typedef {{ price: number, date: number, terminal: string }} PriceEntry date in Unix seconds
- * @typedef {{ avg: number, best: number, bestTerminal: string, samples: number }} PriceStat
+ * @typedef {{ avg: number, best: number, bestTerminal: string, samples: number, updatedAt: string }} PriceStat updatedAt = newest kept sample
  * @typedef {{ generatedAt: string, patch: string | null, refined: Record<string, PriceStat>, raw: Record<string, PriceStat> }} Prices
  */
 
@@ -41,7 +45,14 @@ export function averagePrices(entries, now, maxAgeSec = MAX_AGE_SEC) {
   }
 
   const best = kept.reduce((a, b) => (b.price > a.price || (b.price === a.price && b.terminal < a.terminal) ? b : a));
-  return { avg: Math.round(avg), best: Math.round(best.price), bestTerminal: best.terminal, samples: n };
+  const newest = Math.max(...kept.map((e) => e.date));
+  return {
+    avg: Math.round(avg),
+    best: Math.round(best.price),
+    bestTerminal: best.terminal,
+    samples: n,
+    updatedAt: new Date(newest * 1000).toISOString(),
+  };
 }
 
 /**
@@ -57,12 +68,14 @@ export function buildPrices(uex, staticData, now, index) {
     [...new Set(staticData.materials.map((m) => m.refinedId).filter((id) => id !== null))],
     index.refined,
     now,
+    REFINED_MAX_AGE_DAYS * DAY_SEC,
   );
   const raw = priceTable(
     uex.commodities_raw_prices_all,
     staticData.materials.map((m) => m.id),
     index.materials,
     now,
+    RAW_MAX_AGE_DAYS * DAY_SEC,
   );
   return { generatedAt: now.toISOString(), patch: staticData.patch, refined, raw };
 }
@@ -72,8 +85,9 @@ export function buildPrices(uex, staticData, now, index) {
  * @param {(string | null)[]} slugs
  * @param {Record<string, number>} slugToUex
  * @param {Date} now
+ * @param {number} maxAgeSec
  */
-function priceTable(rows, slugs, slugToUex, now) {
+function priceTable(rows, slugs, slugToUex, now, maxAgeSec) {
   /** @type {Map<number, PriceEntry[]>} */
   const byCommodity = new Map();
   for (const row of rows) {
@@ -86,7 +100,7 @@ function priceTable(rows, slugs, slugToUex, now) {
   for (const slug of [...slugs].sort()) {
     if (!slug) continue;
     const uexId = slugToUex[slug];
-    const stat = uexId === undefined ? null : averagePrices(byCommodity.get(uexId) ?? [], now);
+    const stat = uexId === undefined ? null : averagePrices(byCommodity.get(uexId) ?? [], now, maxAgeSec);
     if (stat) table[slug] = stat;
   }
   return table;

@@ -51,7 +51,9 @@ export function buildStatic(uex, options = {}) {
   const patch = options.patch ?? uex.game_versions?.live ?? null;
   const live = (/** @type {any} */ row) => row.is_available_live === 1 && row.is_visible !== 0;
 
-  // --- stations: refinery terminals + stations flagged has_refinery + yield locations
+  // --- stations: need real refinery evidence, i.e. a live terminal with
+  // type "refinery" or at least one refineries_yields row. The has_refinery
+  // flag alone is not enough (it is set on stations without a refinery deck).
   /** @type {Map<number, { name: string, short: string, system: string }>} */
   const locations = new Map();
   const stationsById = new Map(uex.space_stations.map((s) => [s.id, s]));
@@ -75,7 +77,6 @@ export function buildStatic(uex, options = {}) {
     }
   };
   for (const t of uex.terminals) if (t.type === "refinery" && live(t)) addLocation(t);
-  for (const s of uex.space_stations) if (s.has_refinery === 1 && live(s)) addLocation({ ...s, id_space_station: s.id });
   for (const y of uex.refineries_yields) addLocation(y);
 
   const stationSlugs = assignSlugs(

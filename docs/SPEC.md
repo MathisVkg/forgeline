@@ -52,6 +52,7 @@ forgeline/
 ├─ server/         Fastify app (app.js) and daily job (worker.js)
 ├─ shared/         Calculation engine, validation, formatting (used by web and server)
 ├─ docs/           SPEC.md
+├─ .github/workflows/image.yml   builds and pushes the Docker image
 ├─ Dockerfile
 ├─ docker-compose.yml
 ├─ .env.example
@@ -60,6 +61,8 @@ forgeline/
 ```
 
 Language: JavaScript (ES modules) with JSDoc types. Node 22 LTS.
+
+The image is built by GitHub Actions (`image.yml`) on every push to `main` and published as `ghcr.io/mathisvkg/forgeline`. Portainer pulls it; `docker-compose.yml` has no `build:`.
 
 ---
 
@@ -75,13 +78,17 @@ All files live in the Docker volume mounted at `/data`.
   "patch": "4.10.2",
   "stations": [{ "id": "arc-l1", "name": "ARC-L1 Wide Forest Station", "short": "ARC-L1", "system": "Stanton" }],
   "materials": [{ "id": "titanium", "name": "Titanium", "kind": "ore", "refinedId": "titanium" }],
-  "methods": [{ "id": "dinyx", "name": "Dinyx Solventation" }],
+  "methods": [{ "id": "dinyx-solventation", "name": "Dinyx Solventation", "uex": { "rating_yield": 3, "rating_cost": 1, "rating_speed": 1 } }],
   "bonuses": [{ "stationId": "arc-l1", "materialId": "titanium", "pct": 5 }]
 }
 ```
 
-- `kind`: `ore` | `gem` | `salvage`.
-- IDs are stable slugs. UEX numeric IDs are kept internally by the worker for mapping.
+- `kind`: `ore` | `gem` | `salvage`. `gem` is kept for later; UEX currently marks no gem as refinable.
+- IDs are stable slugs. UEX numeric IDs are kept internally by the worker for mapping (`uex_map`, §3.4). Method ids are full-name slugs (`dinyx-solventation`).
+- **Stations:** a station (or city) is listed only with real refinery evidence: a live UEX terminal with `type === "refinery"`, or at least one `refineries_yields` row. The UEX `has_refinery` flag alone is not enough.
+- **Materials:** every UEX commodity with `is_refinable`. `name` has no "(Ore)" / "(Raw)" suffix. Salvage materials are Construction Material **Rubble**, **Pebbles** and **Salvage**, all refining into Construction Materials (`refinedId: "construction-materials"`).
+- **Methods:** `uex` holds the UEX ratings `rating_yield`, `rating_cost`, `rating_speed` (1–3). UEX gives no numeric yield, cost or time.
+- `bonuses.pct` can be negative (penalty); zero bonuses are omitted.
 - Feeds every dropdown (station, material, method).
 
 ### 3.2 `prices.json` (rebuilt daily)
@@ -90,15 +97,18 @@ All files live in the Docker volume mounted at `/data`.
 {
   "generatedAt": "2026-11-20T03:17:00Z",
   "patch": "4.10.2",
-  "refined": { "titanium": { "avg": 8900, "best": 9420, "bestTerminal": "Area18 TDD", "samples": 14 } },
-  "raw":     { "titanium": { "avg": 3900, "best": 4100, "bestTerminal": "…", "samples": 6 } }
+  "refined": { "titanium": { "avg": 8900, "best": 9420, "bestTerminal": "Area18 TDD", "samples": 14, "updatedAt": "2026-11-20T06:48:55Z" } },
+  "raw":     { "titanium": { "avg": 2500, "best": 3098, "bestTerminal": "Ruin Station", "samples": 12, "updatedAt": "2026-10-16T09:55:28Z" } }
 }
 ```
 
 Average rule, per commodity, from UEX terminal sell prices:
-1. Drop prices `<= 0` and reports older than **7 days**.
-2. `n >= 5` → trimmed mean (drop lowest 10% and highest 10%). `n < 5` → median. `n = 0` → no price (UI shows `—`).
+1. Drop prices `<= 0` and reports older than **7 days** for refined prices, **60 days** for raw prices (UEX raw reports are rare).
+2. `n >= 5` → trimmed mean, dropping `floor(n × 0.1)` prices at each end (so none for n = 5–9). `n < 5` → median. `n = 0` → no price (UI shows `—`).
 3. `best` = highest remaining price, with its terminal name.
+4. `updatedAt` = date of the newest sample kept, so the UI can show the age ("price from 12 days ago").
+
+Prices are whole aUEC per SCU.
 
 ### 3.3 `aggregates.json` (rebuilt daily, from shared quotes)
 
@@ -107,7 +117,7 @@ Average rule, per commodity, from UEX terminal sell prices:
   "generatedAt": "2026-11-20T03:17:00Z",
   "patch": "4.10.2",
   "methods": {
-    "dinyx": {
+    "dinyx-solventation": {
       "yield":   { "median": 0.93, "n": 37 },
       "costPerScu": { "median": 61, "n": 37 },
       "time":    { "baseSec": 1800, "secPerScu": 1510, "n": 37 }
@@ -135,7 +145,16 @@ CREATE TABLE quote_materials (
   raw_cscu INTEGER NOT NULL,
   refined_cscu INTEGER NOT NULL
 );
+CREATE TABLE uex_map (                                         -- stable slugs for UEX ids
+  kind TEXT NOT NULL,          -- station | material | refined | method
+  slug TEXT NOT NULL,
+  uex_id INTEGER NOT NULL,
+  PRIMARY KEY (kind, slug),
+  UNIQUE (kind, uex_id)
+);
 ```
+
+`uex_map`: once a UEX id has a slug it keeps it, even if UEX renames it; collisions get `-2`, `-3`. `material` maps raw commodities, `refined` the refined commodities used for prices (they often share a name). Stations and cities use separate UEX id spaces, so `station` stores the space station id as is, city ids negative (`-id_city`) and outposts `-(1e6 + id_outpost)`. Schema versions use `PRAGMA user_version`.
 
 No timestamp, no IP, no client identifier. When the worker sees a new patch, it deletes every quote of the previous patch.
 
@@ -152,7 +171,7 @@ IndexedDB database `forgeline`, schema version 1.
   id: "uuid",
   title: "Titanium haul #4",
   stationId: "arc-l1",
-  methodId: "dinyx",
+  methodId: "dinyx-solventation",
   materials: [{ materialId: "titanium", rawCScu: 3200, refinedCScu: 3000 }], // refinedCScu optional
   costAuec: 2640,            // optional
   durationSec: 67200,        // from the terminal timer
@@ -232,21 +251,21 @@ K = 5
 
 The UI shows the dominant source: "Baseline", "37 shared quotes" or "Your 4 orders". Before 5 data points exist, it shows "Low confidence".
 
-### 5.4 Baseline defaults (v1, to calibrate)
+### 5.4 Baseline defaults (provisional, calibrated by quotes)
 
-| Method | yield | cost/SCU | time/SCU |
-|---|---|---|---|
-| Dinyx Solventation | 0.93 | 60 | very slow |
-| Pyrometric Chromalysis | 0.90 | 150 | slow |
-| Ferron Exchange | 0.89 | 95 | slow |
-| Thermonatic Deposition | 0.82 | 55 | slow |
-| Electrostarolysis | 0.82 | 90 | moderate |
-| Gaskin Process | 0.80 | 160 | fast |
-| Kazen Winnowing | 0.75 | 50 | moderate |
-| Cormack Method | 0.72 | 95 | fast |
-| XCR Reaction | 0.70 | 165 | fast |
+| Method id | yield | cost/SCU (aUEC) | base time (s) | s per SCU |
+|---|---|---|---|---|
+| dinyx-solventation | 0.93 | 60 | 300 | 1500 |
+| pyrometric-chromalysis | 0.90 | 150 | 300 | 860 |
+| ferron-exchange | 0.89 | 95 | 300 | 780 |
+| thermonatic-deposition | 0.82 | 55 | 300 | 740 |
+| electrostarolysis | 0.82 | 90 | 300 | 490 |
+| kazen-winnowing | 0.75 | 50 | 300 | 450 |
+| gaskin-process | 0.80 | 160 | 300 | 280 |
+| cormack | 0.72 | 95 | 300 | 200 |
+| xcr-reaction | 0.70 | 165 | 300 | 180 |
 
-These are starting values only. The relative ordering matches the Star Citizen Wiki ratings; exact numbers are replaced as real quotes arrive.
+These are provisional starting values (`shared/baseline.js`). The relative ordering matches the Star Citizen Wiki ratings; the numbers are replaced by shared and own quotes through blending (5.3). A method in `static-data.json` without a baseline row gets the per-column median of this table and is flagged `missingBaseline`.
 
 ### 5.5 Nightly fit (worker)
 
@@ -271,7 +290,7 @@ Opt-in per order (checkbox, off by default; the default can be changed in settin
 {
   "patch": "4.10.2",
   "stationId": "arc-l1",
-  "methodId": "dinyx",
+  "methodId": "dinyx-solventation",
   "materials": [{ "materialId": "titanium", "rawCScu": 3200, "refinedCScu": 3000 }],
   "costAuec": 2640,
   "durationSec": 67200
@@ -300,7 +319,7 @@ Responses: `204` stored, `400` invalid, `409` wrong patch, `429` rate limited. B
 
 ## 7. Daily worker
 
-Schedule: once a day, 03:17 server local time (`WORKER_CRON` in `.env`), plus once at container start if `/data` is empty.
+Schedule: once a day, 03:17 server local time (`WORKER_CRON`), plus once at container start if a data file is missing or the last run is older than 24 h. Runs never overlap. `node server/worker.js --once` runs the job once and exits 0/1.
 
 1. Fetch the current game version from UEX. If it differs from `meta.current_patch`: delete old-patch quotes, update `meta`.
 2. Fetch stations with refineries, commodities (ores, gems, salvage materials), refinery methods and refinery yields (station bonuses). Build `static-data.json`.
@@ -308,7 +327,20 @@ Schedule: once a day, 03:17 server local time (`WORKER_CRON` in `.env`), plus on
 4. Recompute `aggregates.json` from SQLite.
 5. Write each file atomically (write to `*.tmp`, then rename). If a UEX call fails, keep the previous file and log the error.
 
-UEX API: base `https://api.uexcorp.uk/2.0/`, Bearer token, daily quota far above our usage. Exact endpoint fields are checked in Task 3.
+UEX API: base `https://api.uexcorp.uk/2.0/`, Bearer token (`UEX_TOKEN`, worker only, never logged), daily quota far above our usage. 8 requests per run. 15 s timeout, 2 retries (1 s, 4 s) on network errors and 5xx, none on 4xx.
+
+| Resource | Fields used | Meaning |
+|---|---|---|
+| `game_versions` | `data.live` | Live patch (`data` is an object) |
+| `space_stations` | `id`, `name`, `nickname`, `star_system_name`, `is_available_live` | Station name, short code, system |
+| `terminals` | `type === "refinery"`, `is_available_live`, `id_space_station` / `id_city` / `id_outpost`, `city_name`, `star_system_name` | Refinery locations (`is_refinery` is unreliable, not used) |
+| `commodities` | `id`, `name`, `kind`, `id_parent`, `is_refinable`, `is_refined`, `is_harvestable`, `is_available_live` | Raw materials (`is_refinable`); raw → refined via `id_parent` (either direction), else same name without suffix; `kind === "Scrap"` → salvage |
+| `refineries_methods` | `id`, `name`, `rating_yield`, `rating_cost`, `rating_speed` | Methods and 1–3 ratings |
+| `refineries_yields` | `id_commodity` (raw), `id_space_station` / `id_city`, `value` | Station bonus in % |
+| `commodities_prices_all` | `id_commodity`, `price_sell`, `date_modified`, `terminal_name` | Refined sell prices |
+| `commodities_raw_prices_all` | `id_commodity`, `price_sell`, `date_modified`, `terminal_name` | Raw sell prices |
+
+`refineries_capacities` exists but is not used.
 
 ---
 
@@ -332,10 +364,11 @@ Footer on every page:
 
 ## 9. Deployment
 
-- One image (`Dockerfile`, multi-stage: build `web/`, then a Node 22 runtime).
-- `docker-compose.yml`: services `app` (port `PORT`, default 8080) and `worker`, same image, different command; shared named volume `forgeline-data` at `/data`.
-- `.env`: `UEX_TOKEN`, `PORT`, `TZ`, `WORKER_CRON`.
-- Health check: `GET /api/health`.
+- One image (`Dockerfile`, multi-stage: build `web/`, then a Node 22 runtime), built by GitHub Actions on every push to `main` and published to GHCR as `ghcr.io/mathisvkg/forgeline:latest` and `:<commit sha>`.
+- Deployed as a **Portainer stack from the Git repository** (compose path `docker-compose.yml`). Portainer pulls the image; the compose file has no `build:` and no `env_file:`.
+- `docker-compose.yml`: services `app` (host port `PORT`, default 8080, container port 3000) and `worker`, same image, different command; shared named volume `forgeline-data` at `/data`.
+- Stack environment variables: `UEX_TOKEN` (worker only), `PORT`, `TZ`, `WORKER_CRON`, optional `IMAGE_TAG` (default `latest`). Plain `docker compose` users can put them in `.env` for substitution.
+- Health check: `GET /api/health` → `status`, `patch`, `lastRun`, `dataFiles`.
 
 ---
 
@@ -368,3 +401,9 @@ Footer on every page:
 - UEX API 2.0 — https://uexcorp.space/api
 - Star Citizen Wiki, Refining — https://starcitizen.tools/Refining
 - RSI, Alpha 4.3.2 structural salvage notes (raw construction materials refine at refinery decks)
+
+---
+
+## Changelog
+
+- 2026-11-20 — v1.1: aligned with Task 3 findings
