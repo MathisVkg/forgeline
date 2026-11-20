@@ -2,9 +2,8 @@
 # or a .env file next to this file for plain `docker compose`). No env_file.
 services:
   app:
-    build: .
-    image: forgeline:local
-    pull_policy: build
+    image: ghcr.io/mathisvkg/forgeline:${IMAGE_TAG:-latest}
+    pull_policy: always
     environment:
       # The app always listens on 3000 inside the container; PORT is the host port.
       PORT: "3000"
@@ -23,8 +22,8 @@ services:
 
   worker:
     # Same image as app (built by the app service).
-    image: forgeline:local
-    pull_policy: never
+    image: ghcr.io/mathisvkg/forgeline:${IMAGE_TAG:-latest}
+    pull_policy: always
     command: ["node", "server/worker.js"]
     environment:
       UEX_TOKEN: ${UEX_TOKEN:-}
