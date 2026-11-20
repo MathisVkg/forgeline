@@ -14,7 +14,8 @@ function env(name, fallback) {
 
 export const config = Object.freeze({
   port: Number(env("PORT", "3000")),
-  host: env("HOST", "0.0.0.0"),
+  /** "::" listens on IPv6 and IPv4 (dual-stack), so localhost and 127.0.0.1 both work. */
+  host: env("HOST", "::"),
   /** Absolute path; relative values are resolved from the current directory. */
   dataDir: path.resolve(env("DATA_DIR", "./data")),
   /** Absolute path; relative values are resolved from the server folder. */

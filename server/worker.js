@@ -20,6 +20,7 @@ import { loadSlugMap } from "./lib/slug.js";
 
 export const STATIC_FILE = "static-data.json";
 export const PRICES_FILE = "prices.json";
+export const AGGREGATES_FILE = "aggregates.json";
 const DAY_MS = 24 * 3600 * 1000;
 
 /** @param {string} message */
@@ -133,6 +134,17 @@ export async function runDailyJob(options = {}) {
         ok = false;
         log(`step prices FAILED: ${errorText(err)}; keeping previous ${PRICES_FILE}`);
       }
+    }
+
+    // 4. aggregates: always written so the file exists; methods stay empty
+    // until shared quotes are fitted (Task 9).
+    t0 = Date.now();
+    try {
+      await writeJsonAtomic(path.join(dataDir, AGGREGATES_FILE), { generatedAt: new Date().toISOString(), patch, methods: {} });
+      log(`step aggregates: 0 methods (no shared quotes yet) (${Date.now() - t0} ms)`);
+    } catch (err) {
+      ok = false;
+      log(`step aggregates FAILED: ${errorText(err)}`);
     }
   } finally {
     setMeta(db, "last_run", new Date().toISOString());

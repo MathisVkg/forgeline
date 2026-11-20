@@ -13,5 +13,8 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    // Never inline assets as data: URIs (small font subsets would be blocked
+    // by the CSP font-src 'self').
+    assetsInlineLimit: 0,
   },
 });

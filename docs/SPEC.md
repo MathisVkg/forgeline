@@ -113,6 +113,8 @@ Prices are whole aUEC per SCU.
 
 ### 3.3 `aggregates.json` (rebuilt daily, from shared quotes)
 
+The worker writes this file on every run, so it always exists; `methods` may be empty (`{}`) until there are shared quotes. Clients treat empty `methods` like no data.
+
 ```json
 {
   "generatedAt": "2026-11-20T03:17:00Z",

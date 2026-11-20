@@ -91,7 +91,9 @@ export function init() {
     const value = (r) => (r.status === "fulfilled" ? r.value : null);
     gameData.staticData = value(staticData);
     gameData.prices = value(prices);
-    gameData.aggregates = value(aggregates);
+    const agg = value(aggregates);
+    // Empty methods (no shared quotes yet) is the same as no aggregates.
+    gameData.aggregates = agg && agg.methods && Object.keys(agg.methods).length > 0 ? agg : null;
     gameData.error = gameData.staticData ? null : NO_STATIC_DATA;
     gameData.loading = false;
     gameData.loaded = true;
