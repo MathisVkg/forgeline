@@ -7,7 +7,11 @@ COPY package.json package-lock.json ./
 COPY web/package.json web/
 COPY server/package.json server/
 COPY shared/package.json shared/
-RUN npm ci
+# Build tools only in case better-sqlite3 has no prebuilt binary for this
+# Node/musl combination; removed again in the same layer.
+RUN apk add --no-cache --virtual .build-deps python3 make g++ \
+ && npm ci \
+ && apk del .build-deps
 
 # 2. build: compile the Svelte SPA to web/dist
 FROM deps AS build
@@ -25,7 +29,10 @@ COPY package.json package-lock.json ./
 COPY web/package.json web/
 COPY server/package.json server/
 COPY shared/package.json shared/
-RUN npm ci --omit=dev --workspace server --workspace shared && npm cache clean --force
+RUN apk add --no-cache --virtual .build-deps python3 make g++ \
+ && npm ci --omit=dev --workspace server --workspace shared \
+ && npm cache clean --force \
+ && apk del .build-deps
 COPY shared/ shared/
 COPY server/ server/
 COPY --from=build /app/web/dist web/dist/

@@ -9,6 +9,7 @@ import Fastify, { LogController } from "fastify";
 import fastifyStatic from "@fastify/static";
 import { APP_NAME } from "@forgeline/shared";
 import { config } from "./config.js";
+import { getMeta, openDbReadOnly } from "./lib/db.js";
 
 /** Files that may be served from DATA_DIR under /data/. */
 export const DATA_FILES = Object.freeze(["static-data.json", "prices.json", "aggregates.json"]);
@@ -59,6 +60,7 @@ export async function buildApp(options = {}) {
   app.get("/api/health", async () => ({
     status: "ok",
     app: APP_NAME,
+    ...readRunInfo(dataDir, app.log),
     dataFiles: Object.fromEntries(DATA_FILES.map((name) => [name, existsSync(path.join(dataDir, name))])),
   }));
 
@@ -95,6 +97,28 @@ export async function buildApp(options = {}) {
   app.setNotFoundHandler((_request, reply) => notFound(reply));
 
   return app;
+}
+
+/**
+ * Reads patch and last run from the worker's database, read-only.
+ * Never creates the database; returns nulls if it is missing or unreadable.
+ * @param {string} dataDir
+ * @param {import("fastify").FastifyBaseLogger} log
+ * @returns {{ patch: string | null, lastRun: string | null }}
+ */
+function readRunInfo(dataDir, log) {
+  /** @type {import("better-sqlite3").Database | null} */
+  let db = null;
+  try {
+    db = openDbReadOnly(dataDir);
+    if (!db) return { patch: null, lastRun: null };
+    return { patch: getMeta(db, "current_patch"), lastRun: getMeta(db, "last_run") };
+  } catch (err) {
+    log.warn(`health: cannot read database: ${err instanceof Error ? err.message : String(err)}`);
+    return { patch: null, lastRun: null };
+  } finally {
+    db?.close();
+  }
 }
 
 /** @param {import("fastify").FastifyReply} reply */

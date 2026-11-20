@@ -1,11 +1,14 @@
+# Configuration comes from environment variables (Portainer stack variables,
+# or a .env file next to this file for plain `docker compose`). No env_file.
 services:
   app:
     build: .
     image: forgeline:local
-    env_file: .env
+    pull_policy: build
     environment:
-      # .env PORT is the host port; inside the container the app always listens on 3000.
+      # The app always listens on 3000 inside the container; PORT is the host port.
       PORT: "3000"
+      TZ: ${TZ:-Europe/Brussels}
     ports:
       - "${PORT:-8080}:3000"
     volumes:
@@ -19,14 +22,18 @@ services:
       start_period: 10s
 
   worker:
+    # Same image as app (built by the app service).
     image: forgeline:local
+    pull_policy: never
     command: ["node", "server/worker.js"]
-    env_file: .env
+    environment:
+      UEX_TOKEN: ${UEX_TOKEN:-}
+      TZ: ${TZ:-Europe/Brussels}
+      WORKER_CRON: ${WORKER_CRON:-17 3 * * *}
     volumes:
       - forgeline-data:/data
     restart: unless-stopped
-    depends_on:
-      - app
+    depends_on: [app]
 
 volumes:
   forgeline-data:

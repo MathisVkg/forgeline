@@ -16,6 +16,7 @@
     "build": "npm run build --workspace web",
     "start": "node server/app.js",
     "worker": "node server/worker.js",
-    "check": "npm run check --workspace web && node scripts/check-js.js"
+    "check": "npm run check --workspace web && node scripts/check-js.js",
+    "worker:once": "node server/worker.js --once"
   }
 }

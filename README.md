@@ -21,7 +21,19 @@ cp .env.example .env        # then set UEX_TOKEN
 docker compose up -d --build
 ```
 
-The site is served on `http://localhost:8080` (change `PORT` in `.env`).
+The site is served on `http://localhost:8080` (change `PORT` in `.env`). Docker Compose reads `.env` only to fill the `${VAR}` placeholders in `docker-compose.yml`.
+
+### Portainer (deploy from Git)
+
+1. **Stacks → Add stack → Repository**: repository URL of this project, reference `refs/heads/main`, compose path `docker-compose.yml`.
+2. Under **Environment variables**, add:
+   - `UEX_TOKEN`: your UEX API token (used by the worker only)
+   - `PORT`: host port for the site (default `8080`)
+   - `TZ`: server time zone, e.g. `Europe/Brussels`
+   - `WORKER_CRON`: daily refresh schedule, default `17 3 * * *`
+3. Deploy. No `.env` file is needed on the server.
+
+After an update, use **Pull and redeploy**. Check `docker logs <stack>-worker-1` for the `step static` and `step prices` lines and open `/api/health`: `patch` and `lastRun` are filled after the first worker run.
 
 ### Privacy note for hosts
 
@@ -39,6 +51,12 @@ npm start        # serves web/dist and the API on http://localhost:3000
 ```
 
 `npm run check` runs `svelte-check` on `web/` and a syntax check on `server/` and `shared/`.
+
+To fetch UEX data locally (needs `UEX_TOKEN` in `.env`), run the daily job once; it writes `data/static-data.json`, `data/prices.json` and `data/forgeline.db`:
+
+```bash
+node --env-file=.env server/worker.js --once
+```
 
 ## Data sources
 
