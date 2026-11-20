@@ -7,6 +7,8 @@ export const PRICE_RESOURCES = /** @type {const} */ (["commodities_prices_all", 
 export const REFINED_MAX_AGE_DAYS = 7;
 export const RAW_MAX_AGE_DAYS = 60;
 const DAY_SEC = 24 * 3600;
+/** A raw sample below this share of the refined average is implausible and ignored. */
+export const RAW_MIN_RATIO = 0.05;
 /** Default max age for averagePrices (refined rule). */
 export const MAX_AGE_SEC = REFINED_MAX_AGE_DAYS * DAY_SEC;
 
@@ -70,12 +72,18 @@ export function buildPrices(uex, staticData, now, index) {
     now,
     REFINED_MAX_AGE_DAYS * DAY_SEC,
   );
+  const refinedOf = new Map(staticData.materials.map((m) => [m.id, m.refinedId]));
   const raw = priceTable(
     uex.commodities_raw_prices_all,
     staticData.materials.map((m) => m.id),
     index.materials,
     now,
     RAW_MAX_AGE_DAYS * DAY_SEC,
+    (slug) => {
+      const refinedId = refinedOf.get(slug);
+      const refinedAvg = refinedId ? refined[refinedId]?.avg : undefined;
+      return refinedAvg ? refinedAvg * RAW_MIN_RATIO : 0;
+    },
   );
   return { generatedAt: now.toISOString(), patch: staticData.patch, refined, raw };
 }
@@ -86,8 +94,9 @@ export function buildPrices(uex, staticData, now, index) {
  * @param {Record<string, number>} slugToUex
  * @param {Date} now
  * @param {number} maxAgeSec
+ * @param {(slug: string) => number} [minPriceFor] samples below this price are ignored
  */
-function priceTable(rows, slugs, slugToUex, now, maxAgeSec) {
+function priceTable(rows, slugs, slugToUex, now, maxAgeSec, minPriceFor = () => 0) {
   /** @type {Map<number, PriceEntry[]>} */
   const byCommodity = new Map();
   for (const row of rows) {
@@ -100,7 +109,9 @@ function priceTable(rows, slugs, slugToUex, now, maxAgeSec) {
   for (const slug of [...slugs].sort()) {
     if (!slug) continue;
     const uexId = slugToUex[slug];
-    const stat = uexId === undefined ? null : averagePrices(byCommodity.get(uexId) ?? [], now, maxAgeSec);
+    const min = minPriceFor(slug);
+    const entries = (uexId === undefined ? [] : (byCommodity.get(uexId) ?? [])).filter((e) => !(e.price < min));
+    const stat = entries.length ? averagePrices(entries, now, maxAgeSec) : null;
     if (stat) table[slug] = stat;
   }
   return table;

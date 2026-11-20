@@ -1,6 +1,8 @@
 <script>
+  import { onMount } from "svelte";
   import { APP_NAME } from "@forgeline/shared";
   import { router } from "./lib/router.svelte.js";
+  import { init as initOrders } from "./lib/stores/orders.svelte.js";
   import Orders from "./pages/Orders.svelte";
   import Calculator from "./pages/Calculator.svelte";
   import NewOrder from "./pages/NewOrder.svelte";
@@ -17,6 +19,11 @@
   ];
 
   const Page = $derived(pages[router.route]);
+
+  // Browser storage: open IndexedDB, purge old history, load orders.
+  onMount(() => {
+    initOrders();
+  });
 </script>
 
 <div class="hazard" aria-hidden="true"></div>

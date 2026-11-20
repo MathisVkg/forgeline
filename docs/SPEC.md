@@ -105,8 +105,9 @@ All files live in the Docker volume mounted at `/data`.
 Average rule, per commodity, from UEX terminal sell prices:
 1. Drop prices `<= 0` and reports older than **7 days** for refined prices, **60 days** for raw prices (UEX raw reports are rare).
 2. `n >= 5` → trimmed mean, dropping `floor(n × 0.1)` prices at each end (so none for n = 5–9). `n < 5` → median. `n = 0` → no price (UI shows `—`).
-3. `best` = highest remaining price, with its terminal name.
-4. `updatedAt` = date of the newest sample kept, so the UI can show the age ("price from 12 days ago").
+3. Raw prices only: a sample below **5 %** of the matching refined average (`RAW_MIN_RATIO = 0.05`) is implausible and dropped, when that refined average exists.
+4. `best` = highest remaining price, with its terminal name.
+5. `updatedAt` = date of the newest sample kept, so the UI can show the age ("price from 12 days ago").
 
 Prices are whole aUEC per SCU.
 
@@ -162,7 +163,7 @@ No timestamp, no IP, no client identifier. When the worker sees a new patch, it 
 
 ## 4. Data in the browser
 
-IndexedDB database `forgeline`, schema version 1.
+IndexedDB database `forgeline`, schema version 1. Stores: `orders` (keyPath `id`, indexes `status` and `endsAt`) and `settings` (keyPath `key`, one record per setting). Code: `web/src/lib/storage/`. If IndexedDB is unavailable (some private modes), the app shows that orders can't be saved.
 
 ### 4.1 Order
 
@@ -172,28 +173,33 @@ IndexedDB database `forgeline`, schema version 1.
   title: "Titanium haul #4",
   stationId: "arc-l1",
   methodId: "dinyx-solventation",
-  materials: [{ materialId: "titanium", rawCScu: 3200, refinedCScu: 3000 }], // refinedCScu optional
-  costAuec: 2640,            // optional
+  materials: [{ materialId: "titanium", rawCScu: 3200, refinedCScu: 3000 }], // refinedCScu null if unknown
+  costAuec: 2640,            // null if unknown
   durationSec: 67200,        // from the terminal timer
   endsAt: "2026-11-21T18:22:00Z",
   status: "refining",        // refining | collected | cancelled
   collectedAt: null,
   cancelledAt: null,
   source: "estimate",        // estimate | manual
-  estimate: { /* snapshot of the estimate shown when saved, or null */ },
-  patch: "4.10.2",
+  estimate: { methodId, totalRefinedCScu, costAuec, durationSec, revenueAuec, netAuec, perHourAuec, paramsSource, pricesGeneratedAt }, // or null
+  patch: "4.10.2",           // null if static data was not loaded
   shared: false,             // true if the quote was sent anonymously
   createdAt: "…",
   updatedAt: "…"
 }
 ```
 
+- Every field is always present; unknown optional values are `null`. `title` is 1–60 characters, 1–20 material lines without duplicates, `durationSec` 60 s – 7 days.
+- `estimate` is a small snapshot of the chosen method only, not the whole `estimate()` result.
+- `endsAt = createdAt + durationSec` when saved; editing `durationSec` recomputes `endsAt` from the edit time.
+- **Status:** `refining → collected` (sets `collectedAt`), `refining → cancelled` (sets `cancelledAt`), and undo `collected | cancelled → refining` (clears both). Other transitions are refused.
 - **Ready** is not stored: an order is ready when `status === "refining"` and `now >= endsAt`.
+- **Order list:** ready first (oldest `endsAt` first), then refining by `endsAt`, then history by most recent change.
 - **History purge:** on each page load, delete orders whose status is `collected` or `cancelled` and whose `collectedAt`/`cancelledAt` is older than **14 days**. Ready-but-not-collected orders are never purged.
 
 ### 4.2 Settings
 
-`{ shareByDefault: false, lastSeenPatch: "4.10.2" }`
+`{ shareByDefault: false, lastSeenPatch: "4.10.2", persistRequested: false, persisted: false }` (defaults; `lastSeenPatch` starts as `null`).
 
 ### 4.3 Backup file
 
@@ -201,9 +207,11 @@ IndexedDB database `forgeline`, schema version 1.
 { "format": "forgeline-backup", "version": 1, "exportedAt": "…", "orders": [ … ] }
 ```
 
-Import merges by `id`; the copy with the newer `updatedAt` wins. Unknown `version` → refuse with a clear message.
+File name `forgeline-backup-YYYY-MM-DD.json`. Import merges by `id`; the copy with the newer `updatedAt` wins, equal → unchanged. Files over 5 MB, invalid JSON, another `format` or an unknown (newer) `version` are refused with a clear message. Invalid orders are skipped and counted.
 
-`navigator.storage.persist()` is requested on first save.
+`navigator.storage.persist()` is requested once, on the first saved order; the result is kept in settings.
+
+Tabs stay in sync through `BroadcastChannel("forgeline")`: every write posts `{ type: "orders-changed" }`.
 
 ---
 
@@ -245,7 +253,7 @@ p = (K × baseline + n_shared × median_shared + 2 × n_own × median_own) / (K 
 K = 5
 ```
 
-- **baseline:** shipped defaults (5.4), replaced by UEX refinery data when the worker can map it.
+- **baseline:** shipped defaults (5.4). UEX only provides 1–3 ratings, so the baseline is the provisional table in §5.4, corrected by real quotes.
 - **shared:** `aggregates.json`, current patch only.
 - **own:** the user's saved orders from the current patch that have a full terminal quote.
 
@@ -407,3 +415,4 @@ Footer on every page:
 ## Changelog
 
 - 2026-11-20 — v1.1: aligned with Task 3 findings
+- 2026-11-20 — v1.2: raw price plausibility filter, browser storage details
