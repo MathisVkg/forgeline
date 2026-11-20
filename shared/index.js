@@ -6,6 +6,7 @@ export const SPEC_VERSION = 1;
 
 export { BASELINE, BASELINE_MEDIAN, PARAM_KEYS, baselineFor, median } from "./baseline.js";
 export { scuToCScu, cScuToScu } from "./units.js";
+export { MAX_AUEC_INPUT, parseAuec } from "./money.js";
 export { estimate } from "./estimate.js";
 export { BLEND_K, LOW_CONFIDENCE_BELOW, blendParams } from "./blend.js";
 export { ownSamplesFromOrders } from "./samples.js";

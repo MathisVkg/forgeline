@@ -1,7 +1,7 @@
 // @ts-check
 // Builds static-data.json (SPEC §3.1) from UEX resources.
 import { assignSlugs } from "./slug.js";
-import { MANUAL_MATERIALS } from "./manual-materials.js";
+import { FORCE_INCLUDE, MANUAL_MATERIALS, REFINED_OVERRIDES } from "./manual-materials.js";
 
 /** UEX resources needed by buildStatic (game_versions is fetched by the patch step). */
 export const STATIC_RESOURCES = /** @type {const} */ ([
@@ -94,6 +94,11 @@ export function buildStatic(uex, options = {}) {
   const byId = new Map(commodities.map((c) => [c.id, c]));
   /** @param {any} raw @returns {any | null} */
   const refinedOf = (raw) => {
+    const override = REFINED_OVERRIDES[raw.name.toLowerCase()];
+    if (override) {
+      const refined = commodities.find((c) => c.name.toLowerCase() === override.toLowerCase());
+      if (refined) return refined;
+    }
     const parent = raw.id_parent && raw.id_parent !== raw.id ? byId.get(raw.id_parent) : null;
     if (parent) return parent;
     const child = commodities.find((c) => c.id_parent === raw.id && c.id !== raw.id && c.is_refined === 1);
@@ -104,7 +109,10 @@ export function buildStatic(uex, options = {}) {
   /** @param {any} c @returns {"ore" | "gem" | "salvage"} */
   const kindOf = (c) => (c.kind === "Scrap" ? "salvage" : c.is_harvestable === 1 ? "gem" : "ore");
 
-  const rawList = commodities.filter((c) => c.is_refinable === 1 && live(c));
+  const forced = new Set(FORCE_INCLUDE.map((n) => n.toLowerCase()));
+  const rawList = commodities.filter(
+    (c) => c.is_refinable === 1 && (live(c) || (forced.has(c.name.toLowerCase()) && c.is_visible !== 0)),
+  );
   const refinedList = [...new Map(rawList.map(refinedOf).filter(Boolean).map((c) => [c.id, c])).values()];
   for (const manual of MANUAL_MATERIALS) {
     const refined = commodities.find((c) => c.name.toLowerCase() === manual.refinedName.toLowerCase());

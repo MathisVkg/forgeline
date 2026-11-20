@@ -8,6 +8,9 @@ import { SETTINGS, req, withTx } from "./db.js";
  * @property {string | null} lastSeenPatch
  * @property {boolean} persistRequested
  * @property {boolean} persisted
+ * @property {string | null} lastStationId station of the last saved order
+ * @property {string | null} lastMethodId method of the last saved order
+ * @property {"cscu" | "scu"} quantityUnit unit of the order form quantities
  */
 
 /** @type {Readonly<Settings>} */
@@ -16,6 +19,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
   lastSeenPatch: null,
   persistRequested: false,
   persisted: false,
+  lastStationId: null,
+  lastMethodId: null,
+  quantityUnit: "cscu",
 });
 
 /** @type {Record<keyof Settings, (v: unknown) => boolean>} */
@@ -24,6 +30,9 @@ const CHECKS = {
   lastSeenPatch: (v) => v === null || (typeof v === "string" && v.length > 0),
   persistRequested: (v) => typeof v === "boolean",
   persisted: (v) => typeof v === "boolean",
+  lastStationId: (v) => v === null || (typeof v === "string" && v.length > 0),
+  lastMethodId: (v) => v === null || (typeof v === "string" && v.length > 0),
+  quantityUnit: (v) => v === "cscu" || v === "scu",
 };
 
 /** @returns {Promise<Settings>} defaults merged with stored values */

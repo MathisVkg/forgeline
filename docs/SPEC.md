@@ -175,8 +175,9 @@ IndexedDB database `forgeline`, schema version 1. Stores: `orders` (keyPath `id`
   title: "Titanium haul #4",
   stationId: "arc-l1",
   methodId: "dinyx-solventation",
-  materials: [{ materialId: "titanium", rawCScu: 3200, refinedCScu: 3000 }], // refinedCScu null if unknown
+  materials: [{ materialId: "titanium", rawCScu: 3200, refinedCScu: 3000, quality: null }], // refinedCScu / quality null if unknown
   costAuec: 2640,            // null if unknown
+  capacityPct: null,         // terminal "CURRENT CAPACITY" %, 0–1000, or null
   durationSec: 67200,        // from the terminal timer
   endsAt: "2026-11-21T18:22:00Z",
   status: "refining",        // refining | collected | cancelled
@@ -191,7 +192,8 @@ IndexedDB database `forgeline`, schema version 1. Stores: `orders` (keyPath `id`
 }
 ```
 
-- Every field is always present; unknown optional values are `null`. `title` is 1–60 characters, 1–20 material lines without duplicates, `durationSec` 60 s – 7 days.
+- Every field is always present; unknown optional values are `null`. `title` is 1–60 characters, 1–20 material lines without duplicates, `durationSec` 60 s – 7 days. `quality` (per line) and `capacityPct` are integers 0–1000 or `null`; orders and backups without them are still valid (backup format stays version 1).
+- **Quick entry from the terminal:** the form mirrors the refinery terminal. Quantities are typed in **cSCU** by default (the terminal's QTY and YIELD columns), or in SCU; they are always stored in cSCU. The cost accepts the terminal's `3455.00`. When the title is left empty it is generated as `<first material>[ +N] · <station short>` (e.g. `Construction Pieces · MIC-L2`, `Titanium +1 · ARC-L1`).
 - `estimate` is a small snapshot of the chosen method only, not the whole `estimate()` result.
 - `endsAt = createdAt + durationSec` when saved; editing `durationSec` recomputes `endsAt` from the edit time.
 - **Status:** `refining → collected` (sets `collectedAt`), `refining → cancelled` (sets `cancelledAt`), and undo `collected | cancelled → refining` (clears both). Other transitions are refused.
@@ -201,7 +203,7 @@ IndexedDB database `forgeline`, schema version 1. Stores: `orders` (keyPath `id`
 
 ### 4.2 Settings
 
-`{ shareByDefault: false, lastSeenPatch: "4.10.2", persistRequested: false, persisted: false }` (defaults; `lastSeenPatch` starts as `null`).
+`{ shareByDefault: false, lastSeenPatch: "4.10.2", persistRequested: false, persisted: false }` plus `lastStationId: null`, `lastMethodId: null` (defaults of the order form, set on each save) and `quantityUnit: "cscu"` (`"cscu"` | `"scu"`). These are the defaults; `lastSeenPatch` starts as `null`.
 
 ### 4.3 Backup file
 
@@ -286,7 +288,7 @@ From current-patch quotes, per method:
 
 ### 5.6 Timer input
 
-The user types the terminal's remaining time. Accepted: `18h 40m`, `18h40`, `18:40` (h:m), `1d 2h 5m`, `40m`. `endsAt = now + duration`. Display: main countdown `18h 40m left`, updated every minute, and local end time `Sat 21 Nov · 19:22` underneath.
+The user types the terminal's PROCESSING TIME (new order) or the time left shown in the work order list (running order). Accepted: `18h 40m`, `18h40`, `18:40` (h:m), `1:02:05` (h:mm:ss), `1d 2h 5m`, `40m`, and the terminal's own forms with seconds `54m 0s`, `43h 12m`, `1h 2m 3s`. 1 minute to 7 days. When editing an order, `endsAt` is only recomputed if the time is changed. `endsAt = now + duration`. Display: main countdown `18h 40m left`, updated every minute, and local end time `Sat 21 Nov · 19:22` underneath.
 
 ---
 
@@ -418,3 +420,4 @@ Footer on every page:
 
 - 2026-11-20 — v1.1: aligned with Task 3 findings
 - 2026-11-20 — v1.2: raw price plausibility filter, browser storage details
+- 2026-11-20 — v1.3: quick order entry from the terminal (cSCU, cost with decimals, generated title), `capacityPct` and `quality`, order form settings, Construction Pieces

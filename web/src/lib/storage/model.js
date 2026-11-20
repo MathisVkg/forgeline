@@ -7,11 +7,13 @@ export const HISTORY_DAYS = 14;
 export const TITLE_MAX = 60;
 export const MAX_LINES = 20;
 export const MIN_DURATION_SEC = 60;
+/** Upper bound for capacityPct and quality (terminal values). */
+export const MAX_PERCENT_FIELD = 1000;
 const DAY_MS = 86_400_000;
 
 /** @typedef {"refining" | "collected" | "cancelled"} OrderStatus */
 /** @typedef {"estimate" | "manual"} OrderSource */
-/** @typedef {{ materialId: string, rawCScu: number, refinedCScu: number | null }} OrderLine */
+/** @typedef {{ materialId: string, rawCScu: number, refinedCScu: number | null, quality: number | null }} OrderLine */
 /**
  * @typedef {object} EstimateSnapshot
  * @property {string} methodId
@@ -32,6 +34,7 @@ const DAY_MS = 86_400_000;
  * @property {string} methodId
  * @property {OrderLine[]} materials
  * @property {number | null} costAuec
+ * @property {number | null} capacityPct terminal "current capacity" %, or null
  * @property {number} durationSec
  * @property {string} endsAt
  * @property {OrderStatus} status
@@ -49,9 +52,10 @@ const DAY_MS = 86_400_000;
  * @property {string} title
  * @property {string} stationId
  * @property {string} methodId
- * @property {{ materialId: string, rawCScu: number, refinedCScu?: number | null }[]} materials
+ * @property {{ materialId: string, rawCScu: number, refinedCScu?: number | null, quality?: number | null }[]} materials
  * @property {number} durationSec
  * @property {number | null} [costAuec]
+ * @property {number | null} [capacityPct]
  * @property {OrderSource} source
  * @property {EstimateSnapshot | null} [estimate]
  * @property {string | null} [patch]
@@ -90,7 +94,7 @@ const isUint = (v) => typeof v === "number" && Number.isInteger(v) && v >= 0;
 /**
  * Checks user input. Messages are written for display next to form fields.
  * Keys: title, stationId, methodId, materials, `materials.<i>`, durationSec,
- * costAuec, source, patch, shared, estimate.
+ * costAuec, capacityPct, source, patch, shared, estimate.
  * @param {any} input
  * @param {StaticDataIds | null} [staticData] skip id checks when missing (offline)
  * @returns {ValidationResult}
@@ -125,6 +129,8 @@ export function validateOrderInput(input, staticData) {
       else if (seen.has(line.materialId)) errors[key] = "This material is already in the order. Add the quantities together.";
       else if (!Number.isInteger(line.rawCScu) || line.rawCScu < 1) errors[key] = "Enter a quantity of at least 0.01 SCU.";
       else if (line.refinedCScu != null && !isUint(line.refinedCScu)) errors[key] = "Refined quantity must be 0 SCU or more.";
+      else if (line.quality != null && !(isUint(line.quality) && line.quality <= MAX_PERCENT_FIELD))
+        errors[key] = `Quality must be a whole number from 0 to ${MAX_PERCENT_FIELD}.`;
       seen.add(line.materialId);
     });
   }
@@ -134,6 +140,8 @@ export function validateOrderInput(input, staticData) {
   else if (input.durationSec > MAX_DURATION_SEC) errors.durationSec = "Time left cannot be more than 7 days.";
 
   if (input.costAuec != null && !isUint(input.costAuec)) errors.costAuec = "Cost must be a whole number of aUEC, 0 or more.";
+  if (input.capacityPct != null && !(isUint(input.capacityPct) && input.capacityPct <= MAX_PERCENT_FIELD))
+    errors.capacityPct = `Capacity must be a whole number from 0 to ${MAX_PERCENT_FIELD} %.`;
   if (!SOURCES.includes(input.source)) errors.source = "Unknown order source.";
   if (input.patch != null && (typeof input.patch !== "string" || !input.patch)) errors.patch = "Unknown game version.";
   if (input.shared != null && typeof input.shared !== "boolean") errors.shared = "Sharing must be on or off.";
@@ -174,8 +182,14 @@ function normaliseFields(input) {
     title: input.title.trim(),
     stationId: input.stationId,
     methodId: input.methodId,
-    materials: input.materials.map((l) => ({ materialId: l.materialId, rawCScu: l.rawCScu, refinedCScu: l.refinedCScu ?? null })),
+    materials: input.materials.map((l) => ({
+      materialId: l.materialId,
+      rawCScu: l.rawCScu,
+      refinedCScu: l.refinedCScu ?? null,
+      quality: l.quality ?? null,
+    })),
     costAuec: input.costAuec ?? null,
+    capacityPct: input.capacityPct ?? null,
     durationSec: input.durationSec,
     source: input.source,
     estimate: input.estimate == null ? null : normaliseSnapshot(input.estimate),
@@ -191,6 +205,7 @@ export const EDITABLE_FIELDS = /** @type {const} */ ([
   "methodId",
   "materials",
   "costAuec",
+  "capacityPct",
   "durationSec",
   "source",
   "estimate",
@@ -370,10 +385,13 @@ export function migrateOrder(raw) {
     stationId: raw.stationId,
     methodId: raw.methodId,
     materials: Array.isArray(raw.materials)
-      ? raw.materials.map((/** @type {any} */ l) => (isObject(l) ? { materialId: l.materialId, rawCScu: l.rawCScu, refinedCScu: l.refinedCScu ?? null } : l))
+      ? raw.materials.map((/** @type {any} */ l) =>
+          isObject(l) ? { materialId: l.materialId, rawCScu: l.rawCScu, refinedCScu: l.refinedCScu ?? null, quality: l.quality ?? null } : l,
+        )
       : raw.materials,
     durationSec: raw.durationSec,
     costAuec: raw.costAuec ?? null,
+    capacityPct: raw.capacityPct ?? null,
     source: SOURCES.includes(raw.source) ? raw.source : "manual",
     estimate: raw.estimate == null ? null : normaliseSnapshot(raw.estimate),
     patch: typeof raw.patch === "string" && raw.patch ? raw.patch : null,
