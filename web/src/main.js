@@ -13,3 +13,6 @@ const target = document.getElementById("app");
 if (!target) throw new Error("#app element missing");
 
 export default mount(App, { target });
+
+// Dev only: window.forgelineSeed() adds sample orders. Removed from production builds.
+if (import.meta.env.DEV) import("./lib/dev/seed.js");

@@ -107,6 +107,20 @@ export async function deleteOrder(id) {
 }
 
 /**
+ * Writes an exact order record back (e.g. "Undo" after delete), same id and
+ * timestamps. The record must pass migrateOrder.
+ * @param {Order} order
+ * @returns {Promise<Order>}
+ */
+export async function restoreOrder(order) {
+  const record = migrateOrder(order);
+  if (!record) throw new TypeError("This order can't be restored.");
+  await withTx(ORDERS, "readwrite", (tx) => req(tx.objectStore(ORDERS).put(record)));
+  notifyOrdersChanged();
+  return record;
+}
+
+/**
  * Deletes collected/cancelled orders older than 14 days.
  * @param {number} [nowMs]
  * @returns {Promise<number>} number deleted

@@ -7,6 +7,7 @@ import {
   listOrders,
   onOrdersChanged,
   purgeHistory,
+  restoreOrder as restoreOrderRecord,
   saveNewOrder,
   setStatus,
   sortOrders,
@@ -24,6 +25,8 @@ class OrdersState {
   /** @type {Order[]} */
   #raw = $state([]);
   loading = $state(false);
+  /** True once init() finished a load attempt (success or error). */
+  loaded = $state(false);
   /** @type {string | null} user-readable error (e.g. storage blocked) */
   error = $state(null);
   /** Shared clock, updated every 60 s and when the tab becomes visible. */
@@ -96,6 +99,7 @@ export function init() {
       initPromise = null; // allow a retry
     } finally {
       ordersState.loading = false;
+      ordersState.loaded = true;
       tick();
       startClock();
     }
@@ -135,5 +139,7 @@ export const editOrder = (id, changes, options) => write(() => updateOrder(id, c
 export const changeStatus = (id, status) => write(() => setStatus(id, status, Date.now()));
 /** @param {string} id */
 export const removeOrder = (id) => write(() => deleteOrder(id));
+/** Writes an exact record back (Undo after delete). @param {Order} order */
+export const restoreOrder = (order) => write(() => restoreOrderRecord(order));
 /** @param {Blob} file */
 export const importFromFile = (file) => write(() => importBackup(file));

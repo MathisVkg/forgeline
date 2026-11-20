@@ -21,7 +21,10 @@ const children = [];
 let stopping = false;
 
 for (const task of tasks) {
-  const child = spawn(process.execPath, task.args, { cwd: task.cwd, stdio: "inherit" });
+  // The server runs from server/, so point DATA_DIR at the repo's data/ folder
+  // (where `node server/worker.js --once` writes) unless it is already set.
+  const env = { ...process.env, DATA_DIR: process.env.DATA_DIR ?? path.join(root, "data") };
+  const child = spawn(process.execPath, task.args, { cwd: task.cwd, stdio: "inherit", env });
   child.on("exit", (code) => {
     if (!stopping) {
       console.log(`[dev] ${task.name} exited (${code ?? "signal"}), stopping the rest`);

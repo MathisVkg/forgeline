@@ -1,5 +1,6 @@
 // @ts-check
 // Minimal hash router: #/orders, #/calculator, #/new, #/settings.
+// A query after the route is kept: #/new?edit=<id> -> route "new", query.edit.
 
 /** @typedef {"orders" | "calculator" | "new" | "settings"} Route */
 
@@ -18,12 +19,23 @@ export function parseHash(hash) {
   return ROUTES.find((route) => route === name) ?? DEFAULT_ROUTE;
 }
 
-export const router = $state({ route: parseHash(location.hash) });
+/**
+ * @param {string} hash
+ * @returns {Record<string, string>}
+ */
+export function parseQuery(hash) {
+  const at = hash.indexOf("?");
+  return at === -1 ? {} : Object.fromEntries(new URLSearchParams(hash.slice(at + 1)));
+}
+
+export const router = $state({ route: parseHash(location.hash), query: parseQuery(location.hash) });
 
 function sync() {
   router.route = parseHash(location.hash);
-  const canonical = `#/${router.route}`;
-  if (location.hash !== canonical) history.replaceState(null, "", canonical);
+  router.query = parseQuery(location.hash);
+  const name = location.hash.replace(/^#\/?/, "").split(/[/?]/)[0];
+  // Unknown or missing route: normalise to the default, dropping the query.
+  if (name !== router.route) history.replaceState(null, "", `#/${router.route}`);
 }
 
 window.addEventListener("hashchange", sync);

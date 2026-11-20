@@ -20,7 +20,7 @@ export {
   snapshotFromEstimate,
   migrateOrder,
 } from "./model.js";
-export { OrderNotFoundError, listOrders, getOrder, saveNewOrder, updateOrder, setStatus, deleteOrder, purgeHistory } from "./orders.js";
+export { OrderNotFoundError, listOrders, getOrder, saveNewOrder, updateOrder, setStatus, deleteOrder, restoreOrder, purgeHistory } from "./orders.js";
 export { DEFAULT_SETTINGS, getSettings, updateSettings } from "./settings.js";
 export { ensurePersistence, storageInfo } from "./persist.js";
 export { BACKUP_FORMAT, BACKUP_VERSION, MAX_BACKUP_BYTES, buildBackup, backupFileName, downloadBackup, parseBackup, mergeOrders, importBackup } from "./backup.js";

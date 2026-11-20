@@ -2,7 +2,11 @@
   import { onMount } from "svelte";
   import { APP_NAME } from "@forgeline/shared";
   import { router } from "./lib/router.svelte.js";
-  import { init as initOrders } from "./lib/stores/orders.svelte.js";
+  import { init as initOrders, ordersState } from "./lib/stores/orders.svelte.js";
+  import { init as initGameData } from "./lib/stores/gameData.svelte.js";
+  import { tabTitle } from "./lib/orders/view.js";
+  import ReadyDialog from "./components/ReadyDialog.svelte";
+  import Toast from "./components/Toast.svelte";
   import Orders from "./pages/Orders.svelte";
   import Calculator from "./pages/Calculator.svelte";
   import NewOrder from "./pages/NewOrder.svelte";
@@ -20,9 +24,15 @@
 
   const Page = $derived(pages[router.route]);
 
-  // Browser storage: open IndexedDB, purge old history, load orders.
+  // Load game data (/data/*.json) and orders (IndexedDB) in parallel.
   onMount(() => {
+    initGameData();
     initOrders();
+  });
+
+  // "(2) Forgeline" while orders are ready.
+  $effect(() => {
+    document.title = tabTitle(ordersState.readyOrders.length, APP_NAME);
   });
 </script>
 
@@ -62,6 +72,9 @@
     Privacy: no account, no personal data; your orders stay in your browser.
   </p>
 </footer>
+
+<ReadyDialog />
+<Toast />
 
 <style>
   :global(#app) {
