@@ -41,6 +41,25 @@ export function stationButtonLabel(short) {
 /** @param {string} system */
 const systemRank = (system) => (SYSTEM_ORDER.includes(system) ? SYSTEM_ORDER.indexOf(system) : SYSTEM_ORDER.length);
 
+/** "ARC-L1", "MIC-L2", "CRU-L1": a code-like short name (letters-dash-digits). @param {string} short */
+const isShortCode = (short) => /^[A-Z]{2,4}-[A-Z]?\d+$/.test(short);
+
+/**
+ * Code and descriptive part of a station name for display:
+ * "CRU-L1" + "Ambitious Dream Station" when the full name starts with a
+ * short code; otherwise the full name once ("Checkmate Station",
+ * "Pyro Gateway (Stanton)", "Levski").
+ * @param {StationLike} s
+ * @returns {{ label: string, sub: string, display: string }}
+ */
+export function stationLabelParts(s) {
+  if (isShortCode(s.short) && s.name !== s.short) {
+    const rest = s.name.startsWith(s.short) ? s.name.slice(s.short.length).trim() : s.name;
+    return { label: s.short, sub: rest, display: rest ? `${s.short} · ${rest}` : s.short };
+  }
+  return { label: s.name, sub: "", display: s.name };
+}
+
 /**
  * Station options grouped Stanton / Pyro / Nyx (then others), sorted by
  * short name inside a group. Searchable by short code, full name and system.
@@ -52,9 +71,7 @@ export function stationOptions(stations) {
     .sort((a, b) => systemRank(a.system) - systemRank(b.system) || a.system.localeCompare(b.system) || a.short.localeCompare(b.short, "en", { numeric: true }))
     .map((s) => ({
       id: s.id,
-      label: s.short,
-      sub: s.name === s.short ? "" : s.name,
-      display: s.name === s.short ? s.short : `${s.short} · ${s.name}`,
+      ...stationLabelParts(s),
       group: s.system,
       keys: [normalizeQuery(s.short), normalizeQuery(s.name), normalizeQuery(s.system)],
     }));

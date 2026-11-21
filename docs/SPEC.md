@@ -203,7 +203,7 @@ IndexedDB database `forgeline`, schema version 1. Stores: `orders` (keyPath `id`
 
 ### 4.2 Settings
 
-`{ shareByDefault: false, lastSeenPatch: "4.10.2", persistRequested: false, persisted: false }` plus `lastStationId: null`, `lastMethodId: null` (defaults of the order form, set on each save) and `quantityUnit: "cscu"` (`"cscu"` | `"scu"`). These are the defaults; `lastSeenPatch` starts as `null`.
+`{ shareByDefault: false, lastSeenPatch: "4.10.2", persistRequested: false, persisted: false }` plus `lastStationId: null`, `lastMethodId: null` (defaults of the order form, set on each save), `quantityUnit: "cscu"` (`"cscu"` | `"scu"`, shared by the calculator and the order form), `recentStationIds: []` (up to 3, most recent first; the UI shows the first as the "Last" chip), `lastMaterialKind: null` (`"ore"` | `"salvage"` | `"gem"`, the material group shown first), `lastBackupAt: null` and `backupReminderDismissedAt: null` (ISO times, for the backup reminder). These are the defaults; `lastSeenPatch` starts as `null`.
 
 ### 4.3 Backup file
 
@@ -213,7 +213,11 @@ IndexedDB database `forgeline`, schema version 1. Stores: `orders` (keyPath `id`
 
 File name `forgeline-backup-YYYY-MM-DD.json`. Import merges by `id`; the copy with the newer `updatedAt` wins, equal → unchanged. Files over 5 MB, invalid JSON, another `format` or an unknown (newer) `version` are refused with a clear message. Invalid orders are skipped and counted.
 
-`navigator.storage.persist()` is requested once, on the first saved order; the result is kept in settings.
+**Import preview:** before anything is written, the Settings page shows what the file would do: "N orders in file: X new, Y updated, Z unchanged, S older than yours, I invalid", then Import or Cancel.
+
+**Clear all data** (Settings, with an inline confirmation and an "Export first" button) empties the `orders` and `settings` stores and removes the `forgeline.*` sessionStorage keys. It can't be undone.
+
+`navigator.storage.persist()` is requested once, on the first saved order; the result is kept in settings. Settings shows whether storage is persistent and how much is used.
 
 Tabs stay in sync through `BroadcastChannel("forgeline")`: every write posts `{ type: "orders-changed" }`.
 
@@ -358,19 +362,22 @@ UEX API: base `https://api.uexcorp.uk/2.0/`, Bearer token (`UEX_TOKEN`, worker o
 
 ## 8. User interface
 
-Style: industrial. Dark gunmetal (`#121417` background, `#1E2126` panels, `#2E3238` borders), hazard amber accent `#F2A900`, teal `#4FD1C5` for ready, condensed headings (Barlow Condensed), Barlow body, JetBrains Mono for numbers. Hazard stripe at the top. Reference mock-up: "SC Refinery Tracker – UI concept" design canvas.
+Style: industrial. Dark gunmetal (`#121417` background, `#1E2126` panels, `#2E3238` borders), hazard amber accent `#F2A900`, teal `#4FD1C5` for ready, condensed headings (Barlow Condensed), Barlow body, JetBrains Mono for numbers. Coloured top borders on panels, tiles and cards (no hazard stripe). Content up to 1440 px wide. Reference mock-up: "SC Refinery Tracker – UI concept" design canvas.
+
+Navigation: **Orders**, **Calculator**, **Settings**. The New order page (new, edit, from estimate) belongs to Orders; Privacy is linked from the footer and Settings.
 
 Screens:
-1. **Orders**: summary (ready, refining, estimated value), station filter, order cards with progress bar, countdown and end time. Actions: mark collected, cancel, edit, delete.
-2. **Calculator**: station, material lines (dropdown and raw SCU), table of 9 methods (yield, cost, time, net, per hour, tags), sell-raw comparison, data-source line, "Save as order".
-3. **New order**: "From estimate" (prefilled) or "Already started". Title, station, method, materials, time left, cost, refined SCU, computed "Ready at", share checkbox.
+1. **Orders**: "+ New order" on the title line; summary (ready, refining, estimated value), station filter, order cards. A card shows the station as an amber chip, a large countdown (amber while refining, teal "Ready"), the end time, a progress bar, method / output / value, and the actions Collected (teal outline, filled when ready), Edit, Cancel (to history). History (last 14 days) has Undo and Delete. **Backup reminder** above the cards when there are ≥ 3 orders and no backup (or dismissal) in the last 14 days: "Your orders are only stored in this browser. Export a backup" + Dismiss.
+2. **Calculator**: station combobox (type to filter) with the last used station as a chip, material buttons (Ores / Salvage switch, station bonus on each button), quantities in cSCU or SCU, table of 9 methods (yield, cost, time, net, per hour, tags), sell-raw comparison, data-source line, "Save as order".
+3. **New order**: "Started in game" or "From estimate". Station and method comboboxes, material buttons, Qty / Yield per line, cost, time left with "Ready at", optional title, More fields (capacity, quality).
 4. **Ready popup**: on page load, lists ready orders not yet collected. "Collected" per order, "Remind me later" (hides until next load).
-5. **Settings / backup**: export, import, share-by-default, clear all data.
+5. **Settings**: your orders (counts, storage status, Export backup, Import backup with a preview before writing), preferences (quantity unit, clear last station), game data (patch, data and price dates, shared quotes), about (version and build commit, links), and Clear all data.
+6. **Privacy** (`#/privacy`): what is stored where, no tracking, data sources, note for hosts.
 
-Every page works on a phone width.
+Layout: Calculator and New order use two equal columns from **1300 px** and one column below. From 1440×900 up they fit on one screen with a typical load (1–2 materials). Every page works on a phone width (touch targets 44 px below 960 px).
 
 Footer on every page:
-> Forgeline is an unofficial Star Citizen fan site, not affiliated with the Cloud Imperium group of companies. All content on this site not authored by its host or users are property of their respective owners. Game data and prices provided by [UEX](https://uexcorp.space). Privacy: no account, no personal data; your orders stay in your browser.
+> Forgeline is an unofficial Star Citizen fan site, not affiliated with the Cloud Imperium group of companies. All content on this site not authored by its host or users are property of their respective owners. Game data and prices provided by [UEX](https://uexcorp.space) · [Privacy](#/privacy): no account, no personal data; your orders stay in your browser.
 
 ---
 
@@ -421,3 +428,4 @@ Footer on every page:
 - 2026-11-20 — v1.1: aligned with Task 3 findings
 - 2026-11-20 — v1.2: raw price plausibility filter, browser storage details
 - 2026-11-20 — v1.3: quick order entry from the terminal (cSCU, cost with decimals, generated title), `capacityPct` and `quality`, order form settings, Construction Pieces
+- 2026-11-21 — v1.4: Settings page (backup with import preview, clear all data, preferences, game data, about), Privacy page, backup reminder, new settings keys, UI section updated (comboboxes, material switch, 1300 px two-column breakpoint)

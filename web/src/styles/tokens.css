@@ -278,14 +278,33 @@ samp,
   color: var(--color-on-accent);
 }
 
-/* Compact material buttons: 36 px from 960 px (desktop), 44 px touch below. */
+/* Compact material buttons on a fixed grid: every button fills a cell and the
+   bonus has a reserved slot, so changing station never moves a button.
+   36 px tall from 960 px (desktop), 44 px touch below. */
 .picker-options.compact {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 6px;
 }
 
 .opt.compact {
-  padding: 4px 10px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
   font-size: 14px;
+}
+
+.opt.compact .opt-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.bonus-slot {
+  flex: none;
+  min-width: 34px;
+  text-align: right;
 }
 
 @media (min-width: 960px) {

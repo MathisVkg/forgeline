@@ -1,11 +1,11 @@
 // @ts-check
-// Minimal hash router: #/orders, #/calculator, #/new, #/settings.
+// Minimal hash router: #/orders, #/calculator, #/new, #/settings, #/privacy.
 // A query after the route is kept: #/new?edit=<id> -> route "new", query.edit.
 
-/** @typedef {"orders" | "calculator" | "new" | "settings"} Route */
+/** @typedef {"orders" | "calculator" | "new" | "settings" | "privacy"} Route */
 
 /** @type {readonly Route[]} */
-export const ROUTES = ["orders", "calculator", "new", "settings"];
+export const ROUTES = ["orders", "calculator", "new", "settings", "privacy"];
 
 /** @type {Route} */
 export const DEFAULT_ROUTE = "orders";

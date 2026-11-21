@@ -76,6 +76,7 @@
         <div class="panel-head">
           <p class="step">Step 01</p>
           <h2 id="load-title">Raw load</h2>
+          <button type="button" class="btn btn-ghost clear" onclick={() => calc.clear()}>Clear</button>
         </div>
 
         <div class="station-row">
@@ -83,9 +84,10 @@
             bind:value={calc.stationId}
             options={stationOpts}
             id="calc-station"
-            label="Refinery station"
+            label="Station"
             placeholder="Type a station, e.g. MIC-L2"
             picker="station"
+            inline
             onchange={(id) => pushRecentStation(id)}
           />
           <RecentStations stations={gameData.staticData.stations} value={calc.stationId} onpick={pickStation} />
@@ -169,7 +171,6 @@
               </dd>
             </div>
           </dl>
-          <button type="button" class="btn btn-ghost clear" onclick={() => calc.clear()}>Clear</button>
         </div>
       </section>
 
@@ -295,7 +296,7 @@
     font-size: 30px;
   }
 
-  /* Stacked below 1100 px, two equal halves from 1100 px up. */
+  /* Stacked below 1300 px, two equal halves from 1300 px up. */
   .panels {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -303,7 +304,7 @@
     align-items: start;
   }
 
-  @media (min-width: 1100px) {
+  @media (min-width: 1300px) {
     .panels {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -337,6 +338,20 @@
     font-size: 22px;
   }
 
+  /* Clear sits at the right of the Step 01 header */
+  .panel-head .clear {
+    margin-left: auto;
+    min-height: 32px;
+    margin-block: -6px;
+  }
+
+  @media (max-width: 959px) {
+    .panel-head .clear {
+      min-height: var(--touch);
+      margin-block: -10px;
+    }
+  }
+
   .step {
     margin: 0;
     color: var(--color-accent);
@@ -350,7 +365,7 @@
   .station-row {
     display: flex;
     flex-wrap: wrap;
-    align-items: flex-end;
+    align-items: center;
     gap: var(--space-2) var(--space-3);
   }
 
@@ -380,7 +395,7 @@
   .lines {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
   }
 
   .lines-head {
@@ -406,9 +421,15 @@
     grid-template-areas: "name qty remove" "error error error";
     align-items: center;
     gap: 2px var(--space-2);
-    padding: 4px 4px 4px var(--space-3);
+    padding: 0 0 0 var(--space-3);
     border: 1px solid var(--color-border);
     background: var(--color-bg);
+  }
+
+  .line .qty input,
+  .line .remove {
+    border-top: 0;
+    border-bottom: 0;
   }
 
   .line-name {
@@ -473,7 +494,7 @@
   .totals {
     display: flex;
     flex-wrap: wrap;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: var(--space-2) var(--space-4);
     padding-top: var(--space-3);
@@ -489,8 +510,9 @@
 
   .totals dl div {
     display: flex;
-    flex-direction: column;
-    gap: 2px;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0 var(--space-2);
   }
 
   dt {

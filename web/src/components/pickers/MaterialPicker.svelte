@@ -52,8 +52,9 @@
         {@const bonus = bonusLabel(atStation.get(m.id) ?? 0)}
         <label class="opt compact">
           <input type="checkbox" value={m.id} {checked} disabled={!checked && full} onchange={() => ontoggle(m.id)} />
-          <span class="opt-row">
-            <span class="opt-label">{m.name}</span>
+          <span class="opt-label">{m.name}</span>
+          <!-- reserved slot: same width with or without a bonus, so nothing moves -->
+          <span class="bonus-slot">
             {#if bonus}
               <span class="bonus-tag {bonus.tone}">{bonus.text}</span>
               <span class="sr-only">{bonus.tone === "bonus" ? "yield bonus" : "yield penalty"} at this station</span>
@@ -67,8 +68,10 @@
 </div>
 
 <style>
+  /* 24 px above the Materials row (12 px panel gap + 12 px), 12 px to the buttons */
   .materials {
-    gap: var(--space-2);
+    gap: var(--space-3);
+    margin-top: var(--space-3);
   }
 
   .head {

@@ -13,6 +13,8 @@ import { SETTINGS, req, withTx } from "./db.js";
  * @property {"cscu" | "scu"} quantityUnit unit of the order form quantities
  * @property {string[]} recentStationIds up to 3 recent stations, most recent first
  * @property {"ore" | "salvage" | "gem" | null} lastMaterialKind material group of the last saved order
+ * @property {string | null} lastBackupAt ISO time of the last backup export
+ * @property {string | null} backupReminderDismissedAt ISO time the backup reminder was dismissed
  */
 
 /** @type {Readonly<Settings>} */
@@ -26,6 +28,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   quantityUnit: "cscu",
   recentStationIds: [],
   lastMaterialKind: null,
+  lastBackupAt: null,
+  backupReminderDismissedAt: null,
 });
 
 /** @type {Record<keyof Settings, (v: unknown) => boolean>} */
@@ -39,6 +43,8 @@ const CHECKS = {
   quantityUnit: (v) => v === "cscu" || v === "scu",
   recentStationIds: (v) => Array.isArray(v) && v.length <= 3 && v.every((x) => typeof x === "string" && x.length > 0),
   lastMaterialKind: (v) => v === null || v === "ore" || v === "salvage" || v === "gem",
+  lastBackupAt: (v) => v === null || (typeof v === "string" && Number.isFinite(Date.parse(v))),
+  backupReminderDismissedAt: (v) => v === null || (typeof v === "string" && Number.isFinite(Date.parse(v))),
 };
 
 /** @returns {Promise<Settings>} defaults merged with stored values */

@@ -15,11 +15,12 @@
    *   placeholder?: string,
    *   error?: string | null,
    *   picker?: string,
+   *   inline?: boolean,
    *   onchange?: (id: string) => void,
    *   onblur?: () => void,
    * }}
    */
-  let { value = $bindable(""), options, id, label, placeholder = "", error = null, picker = "", onchange, onblur } = $props();
+  let { value = $bindable(""), options, id, label, placeholder = "", error = null, picker = "", inline = false, onchange, onblur } = $props();
 
   const listId = $derived(`${id}-list`);
   const selected = $derived(options.find((o) => o.id === value) ?? null);
@@ -147,7 +148,7 @@
   }
 </script>
 
-<div class="combo" class:open data-picker={picker || undefined}>
+<div class="combo" class:open class:inline data-picker={picker || undefined}>
   <label class="combo-label" for={id}>{label}</label>
   <div class="combo-field">
     <input
@@ -220,6 +221,18 @@
     flex-direction: column;
     gap: var(--space-1);
     min-width: 0;
+  }
+
+  /* inline: label left of the input (saves a row) */
+  .combo.inline {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: var(--space-3);
+  }
+
+  .combo.inline .combo-error {
+    grid-column: 2;
   }
 
   .combo-label {

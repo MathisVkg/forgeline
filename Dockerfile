@@ -15,9 +15,11 @@ RUN apk add --no-cache --virtual .build-deps python3 make g++ \
 
 # 2. build: compile the Svelte SPA to web/dist
 FROM deps AS build
+# Commit shown in Settings > About (passed by the GitHub Action; "dev" when empty)
+ARG GITHUB_SHA=""
 COPY shared/ shared/
 COPY web/ web/
-RUN npm run build
+RUN GITHUB_SHA="$GITHUB_SHA" npm run build
 
 # 3. runtime: production dependencies of server + shared only
 FROM node:22-alpine AS runtime

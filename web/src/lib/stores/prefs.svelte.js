@@ -15,6 +15,10 @@ class Prefs {
   recentStationIds = $state([]);
   /** @type {MaterialKind | null} */
   lastMaterialKind = $state(null);
+  /** @type {string | null} */
+  lastBackupAt = $state(null);
+  /** @type {string | null} */
+  backupReminderDismissedAt = $state(null);
   loaded = $state(false);
 }
 
@@ -30,6 +34,8 @@ export function initPrefs() {
       prefs.quantityUnit = s.quantityUnit;
       prefs.recentStationIds = s.recentStationIds;
       prefs.lastMaterialKind = s.lastMaterialKind;
+      prefs.lastBackupAt = s.lastBackupAt;
+      prefs.backupReminderDismissedAt = s.backupReminderDismissedAt;
     })
     .catch(() => {})
     .finally(() => {
@@ -58,4 +64,31 @@ export function setLastMaterialKind(kind) {
   if (prefs.lastMaterialKind === kind) return;
   prefs.lastMaterialKind = kind;
   updateSettings({ lastMaterialKind: kind }).catch(() => {});
+}
+
+/** Records a backup export (hides the backup reminder). @param {number} [nowMs] */
+export function markBackupDone(nowMs = Date.now()) {
+  prefs.lastBackupAt = new Date(nowMs).toISOString();
+  updateSettings({ lastBackupAt: prefs.lastBackupAt }).catch(() => {});
+}
+
+/** Hides the backup reminder for 14 days. @param {number} [nowMs] */
+export function dismissBackupReminder(nowMs = Date.now()) {
+  prefs.backupReminderDismissedAt = new Date(nowMs).toISOString();
+  updateSettings({ backupReminderDismissedAt: prefs.backupReminderDismissedAt }).catch(() => {});
+}
+
+/** Forgets the last station and method (form defaults, "Last" chip). */
+export async function clearLastStation() {
+  prefs.recentStationIds = [];
+  await updateSettings({ recentStationIds: [], lastStationId: null, lastMethodId: null }).catch(() => {});
+}
+
+/** Back to defaults after "Clear all data" (storage is already empty). */
+export function resetPrefs() {
+  prefs.quantityUnit = "cscu";
+  prefs.recentStationIds = [];
+  prefs.lastMaterialKind = null;
+  prefs.lastBackupAt = null;
+  prefs.backupReminderDismissedAt = null;
 }

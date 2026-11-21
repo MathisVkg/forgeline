@@ -12,8 +12,9 @@
   import Calculator from "./pages/Calculator.svelte";
   import NewOrder from "./pages/NewOrder.svelte";
   import Settings from "./pages/Settings.svelte";
+  import Privacy from "./pages/Privacy.svelte";
 
-  const pages = { orders: Orders, calculator: Calculator, new: NewOrder, settings: Settings };
+  const pages = { orders: Orders, calculator: Calculator, new: NewOrder, settings: Settings, privacy: Privacy };
 
   /** @type {{ route: import("./lib/router.svelte.js").Route, label: string }[]} */
   const links = [
@@ -69,8 +70,8 @@
   <p class="inner">
     {APP_NAME} is an unofficial Star Citizen fan site, not affiliated with the Cloud Imperium group of companies.
     All content on this site not authored by its host or users are property of their respective owners. Game data
-    and prices provided by <a href="https://uexcorp.space" rel="noopener noreferrer" target="_blank">UEX</a>.
-    Privacy: no account, no personal data; your orders stay in your browser.
+    and prices provided by <a href="https://uexcorp.space" rel="noopener noreferrer" target="_blank">UEX</a> ·
+    <a href="#/privacy">Privacy</a>: no account, no personal data; your orders stay in your browser.
   </p>
 </footer>
 

@@ -6,6 +6,8 @@
   import { gameData } from "../lib/stores/gameData.svelte.js";
   import { filterByStation, stationChips, summarize } from "../lib/orders/view.js";
   import { HISTORY_DAYS } from "../lib/storage/model.js";
+  import { shouldShowBackupReminder } from "../lib/settings/logic.js";
+  import { dismissBackupReminder, prefs } from "../lib/stores/prefs.svelte.js";
 
   /** @type {string | null} */
   let selected = $state(null);
@@ -17,6 +19,15 @@
   const history = $derived(filterByStation(ordersState.historyOrders, station));
   const summary = $derived(summarize(ordersState.activeOrders, ordersState.nowMs, gameData.staticData, gameData.prices));
   const empty = $derived(ordersState.loaded && !ordersState.error && ordersState.orders.length === 0);
+  const remindBackup = $derived(
+    prefs.loaded &&
+      shouldShowBackupReminder({
+        orderCount: ordersState.orders.length,
+        lastBackupAt: prefs.lastBackupAt,
+        dismissedAt: prefs.backupReminderDismissedAt,
+        nowMs: ordersState.nowMs,
+      }),
+  );
 </script>
 
 <section class="page" aria-labelledby="orders-title">
@@ -66,6 +77,13 @@
         </span>
       </div>
     </div>
+
+    {#if remindBackup}
+      <p class="reminder" data-testid="backup-reminder">
+        <span>Your orders are only stored in this browser. <a href="#/settings">Export a backup</a></span>
+        <button type="button" class="btn btn-ghost" onclick={() => dismissBackupReminder()}>Dismiss</button>
+      </p>
+    {/if}
 
     {#if chips.length > 0}
       <div class="chips" role="group" aria-label="Filter by station">
@@ -190,6 +208,23 @@
   .tile.value .tile-value {
     color: var(--color-text);
     font-size: 24px;
+  }
+
+  .reminder {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-1) var(--space-3);
+    margin: 0;
+    padding: 2px 4px 2px var(--space-4);
+    border: 1px solid var(--color-border);
+    border-left: 4px solid var(--color-accent);
+    background: var(--color-panel);
+  }
+
+  .reminder a {
+    font-weight: 600;
   }
 
   .chips {

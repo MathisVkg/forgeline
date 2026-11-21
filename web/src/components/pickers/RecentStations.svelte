@@ -3,17 +3,19 @@
   import { prefs } from "../../lib/stores/prefs.svelte.js";
 
   /**
-   * Up to 3 recent stations as chips (most recent first). One tap selects.
+   * The last used station as one chip; it stays visible (shown as selected)
+   * when it is the current station. One tap selects.
    * @type {{ stations: import("../../lib/pickers.js").StationLike[] | undefined, value: string, onpick: (id: string) => void }}
    */
   let { stations, value, onpick } = $props();
 
-  const recent = $derived(knownRecentStations(prefs.recentStationIds, stations));
+  // Only the most recent station is shown (storage keeps up to 3).
+  const recent = $derived(knownRecentStations(prefs.recentStationIds, stations).slice(0, 1));
 </script>
 
 {#if recent.length}
-  <div class="recent" role="group" aria-label="Recent stations">
-    <span class="recent-label" aria-hidden="true">Recent</span>
+  <div class="recent" role="group" aria-label="Last station">
+    <span class="recent-label" aria-hidden="true">Last</span>
     {#each recent as s (s.id)}
       <button type="button" class="chip" aria-pressed={value === s.id} title={s.name} onclick={() => onpick(s.id)}>
         {stationButtonLabel(s.short)}<span class="sr-only">{" · "}{s.name}</span>
@@ -63,6 +65,7 @@
 
   .chip[aria-pressed="true"] {
     border-color: var(--color-accent);
-    color: var(--color-accent);
+    background: var(--color-accent);
+    color: var(--color-on-accent);
   }
 </style>

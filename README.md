@@ -10,20 +10,20 @@ Full design: [docs/SPEC.md](docs/SPEC.md).
 
 > Status: in development.
 
+## Your data
+
+- Your orders and settings live **only in your browser** (IndexedDB). There is no account and nothing about you is sent to the server.
+- **Back up** from **Settings → Export backup** (a `forgeline-backup-YYYY-MM-DD.json` file). **Restore** with **Import backup**: you see what will change (new, updated, unchanged) before anything is written. The Orders page reminds you when you have 3+ orders and no recent backup.
+- **Settings → Clear all data** deletes everything Forgeline stored in this browser.
+- Details: the in-app Privacy page (`#/privacy`).
+
 ## Self-hosting
+
+The Docker image is built by GitHub Actions on every push to `main` and published as `ghcr.io/mathisvkg/forgeline` (`:latest` and `:<commit sha>`). The compose file pulls it; there is no build on the server.
 
 Requirements: Docker with Compose, and a free UEX API token (create an app on https://uexcorp.space/api).
 
-```bash
-git clone https://github.com/MathisVkg/forgeline.git
-cd forgeline
-cp .env.example .env        # then set UEX_TOKEN
-docker compose up -d --build
-```
-
-The site is served on `http://localhost:8080` (change `PORT` in `.env`). Docker Compose reads `.env` only to fill the `${VAR}` placeholders in `docker-compose.yml`.
-
-### Portainer (deploy from Git)
+### Portainer (recommended)
 
 1. **Stacks → Add stack → Repository**: repository URL of this project, reference `refs/heads/main`, compose path `docker-compose.yml`.
 2. Under **Environment variables**, add:
@@ -31,13 +31,28 @@ The site is served on `http://localhost:8080` (change `PORT` in `.env`). Docker 
    - `PORT`: host port for the site (default `8080`)
    - `TZ`: server time zone, e.g. `Europe/Brussels`
    - `WORKER_CRON`: daily refresh schedule, default `17 3 * * *`
+   - `IMAGE_TAG` (optional): a commit sha to pin a version, default `latest`
 3. Deploy. No `.env` file is needed on the server.
 
-After an update, use **Pull and redeploy**. Check `docker logs <stack>-worker-1` for the `step static` and `step prices` lines and open `/api/health`: `patch` and `lastRun` are filled after the first worker run.
+**Health check:** the `app` container turns *healthy* within about 40 s (`GET /api/health`). `/api/health` shows `patch` and `lastRun` once the worker has run; `docker logs <stack>-worker-1` shows one line per step (`step static`, `step prices`, `step aggregates`).
+
+**Updating:** push to `main` → wait for the **Build image** Action to finish → in Portainer, **Pull and redeploy** the stack.
+
+### Plain Docker Compose
+
+```bash
+git clone https://github.com/MathisVkg/forgeline.git
+cd forgeline
+cp .env.example .env        # then set UEX_TOKEN
+docker compose pull
+docker compose up -d
+```
+
+The site is served on `http://localhost:8080` (change `PORT` in `.env`). Compose reads `.env` only to fill the `${VAR}` placeholders in `docker-compose.yml`. To update: `docker compose pull && docker compose up -d`.
 
 ### Privacy note for hosts
 
-The app stores no IP addresses and disables request logging. If you put a reverse proxy in front (Nginx, Traefik, Caddy…), turn off access logs or mask client IPs for `/api/quotes`.
+The app stores no IP addresses and disables request logging. If you put a reverse proxy in front (Nginx, Traefik, Caddy…), turn off its access logs or mask client IPs, especially for `/api/quotes`.
 
 ## Development
 

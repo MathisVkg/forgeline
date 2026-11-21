@@ -61,9 +61,9 @@
 
   const stationOpts = $derived(stationOptions(gameData.staticData?.stations));
   const methodOpts = $derived(methodOptions(gameData.staticData?.methods));
-  // two columns from 1100 px (wording of the empty-lines hint only)
+  // two columns from 1300 px (wording of the empty-lines hint only)
   let innerWidth = $state(typeof window === "undefined" ? 1280 : window.innerWidth);
-  const wide = $derived(innerWidth >= 1100);
+  const wide = $derived(innerWidth >= 1300);
   const ctx = $derived({
     mode,
     staticData: gameData.staticData,
@@ -434,8 +434,8 @@
     align-items: start;
   }
 
-  /* Two equal columns from 1100 px: where/what on the left, terminal numbers on the right. */
-  @media (min-width: 1100px) {
+  /* Two equal columns from 1300 px: where/what on the left, terminal numbers on the right. */
+  @media (min-width: 1300px) {
     .order-form {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
