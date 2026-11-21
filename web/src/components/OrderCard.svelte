@@ -5,6 +5,7 @@
   import { materialsLine, orderOutput } from "../lib/orders/view.js";
   import { cancelOrder, markCollected } from "../lib/orders/actions.svelte.js";
   import { gameData } from "../lib/stores/gameData.svelte.js";
+  import { stationButtonLabel } from "../lib/pickers.js";
 
   /** @type {{ order: import("../lib/storage/model.js").Order, nowMs: number }} */
   let { order, nowMs } = $props();
@@ -47,7 +48,27 @@
     <span class="sr-only" aria-live="polite">{ready ? "Ready to collect" : ""}</span>
 
     <h2 id={titleId}>{order.title}</h2>
-    <p class="station">{gameData.stationName(order.stationId)}</p>
+    <p class="where">
+      <span class="station-chip" title={gameData.stationName(order.stationId)}
+        >{stationButtonLabel(gameData.stationShort(order.stationId))}<span class="sr-only"> · {gameData.stationName(order.stationId)}</span></span
+      >
+    </p>
+
+    <div class="when">
+      <span class="countdown" class:is-ready={ready}>{ready ? "Ready" : countdown}</span>
+      <span class="ends"><span class="ends-label">Ends</span> <span class="ends-at">{formatEndTime(order.endsAt, nowMs)}</span></span>
+    </div>
+
+    <div
+      class="progress"
+      role="progressbar"
+      aria-label="Refining progress"
+      aria-valuemin="0"
+      aria-valuemax="100"
+      aria-valuenow={pct}
+    >
+      <div class="fill" style:width="{pct}%"></div>
+    </div>
 
     <dl class="stats">
       <div>
@@ -71,21 +92,6 @@
 
     <p class="materials">{materialsLine(order, (id) => gameData.materialName(id), formatScu)}</p>
 
-    <div
-      class="progress"
-      role="progressbar"
-      aria-label="Refining progress"
-      aria-valuemin="0"
-      aria-valuemax="100"
-      aria-valuenow={pct}
-    >
-      <div class="fill" style:width="{pct}%"></div>
-    </div>
-
-    <div class="times">
-      <span class="num">{countdown}</span>
-      <span><span class="ends">ENDS</span> <span class="num">{formatEndTime(order.endsAt, nowMs)}</span></span>
-    </div>
 
     {#if confirming}
       <div class="confirm" role="group" aria-label="Confirm">
@@ -99,7 +105,7 @@
       <div class="actions">
         <button
           type="button"
-          class="btn {ready ? 'btn-ready' : ''}"
+          class="btn {ready ? 'btn-ready' : 'btn-ready-outline'}"
           disabled={busy}
           onclick={() => run(() => markCollected(order))}>Collected</button
         >
@@ -163,22 +169,46 @@
     overflow-wrap: anywhere;
   }
 
-  .station {
-    margin: -8px 0 0;
-    color: var(--color-muted);
+  /* Where: the station as an amber chip (amber on #33290d: 6.6:1). */
+  .where {
+    margin: -6px 0 0;
   }
 
-  .stats {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--space-3);
-    margin: 0;
-    padding: var(--space-3) 0;
-    border-top: 1px solid var(--color-border);
-    border-bottom: 1px solid var(--color-border);
+  .station-chip {
+    display: inline-block;
+    padding: 2px var(--space-2);
+    border: 1px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
+    border-radius: var(--radius);
+    background: #33290d;
+    color: var(--color-accent);
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: 14px;
+    letter-spacing: 0.02em;
   }
 
-  dt {
+  /* When: large countdown, amber while refining, teal when ready; end time in white. */
+  .when {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-1) var(--space-3);
+  }
+
+  .countdown {
+    color: var(--color-accent);
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: 21px;
+    line-height: 1.2;
+  }
+
+  .countdown.is-ready {
+    color: var(--color-ready);
+  }
+
+  .ends-label {
     color: var(--color-muted);
     font-family: var(--font-heading);
     font-weight: 600;
@@ -187,32 +217,61 @@
     text-transform: uppercase;
   }
 
+  .ends-at {
+    color: var(--color-text);
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: 15px;
+  }
+
+  /* Secondary: method / output / value. */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-3);
+    margin: 0;
+    padding: var(--space-2) 0;
+    border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  dt {
+    color: var(--color-muted);
+    font-family: var(--font-heading);
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
   dd {
     margin: 2px 0 0;
+    color: var(--color-text);
+    font-size: 14px;
     overflow-wrap: anywhere;
   }
 
   .num {
     font-family: var(--font-mono);
     font-weight: 500;
-    font-size: 15px;
+    font-size: 13px;
   }
 
   .tag {
     margin-left: 4px;
     color: var(--color-muted);
     font-family: var(--font-body);
-    font-size: 13px;
+    font-size: 12px;
   }
 
   .materials {
     margin: 0;
     color: var(--color-muted);
-    font-size: 15px;
+    font-size: 14px;
   }
 
   .progress {
-    height: 8px;
+    height: 6px;
     background: var(--color-bg);
     border: 1px solid var(--color-border);
   }
@@ -220,21 +279,6 @@
   .fill {
     height: 100%;
     background: var(--tone);
-  }
-
-  .times {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    gap: var(--space-2);
-  }
-
-  .ends {
-    color: var(--color-muted);
-    font-family: var(--font-heading);
-    font-weight: 600;
-    font-size: 13px;
-    letter-spacing: 0.1em;
   }
 
   .actions {

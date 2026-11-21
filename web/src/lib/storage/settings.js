@@ -11,6 +11,8 @@ import { SETTINGS, req, withTx } from "./db.js";
  * @property {string | null} lastStationId station of the last saved order
  * @property {string | null} lastMethodId method of the last saved order
  * @property {"cscu" | "scu"} quantityUnit unit of the order form quantities
+ * @property {string[]} recentStationIds up to 3 recent stations, most recent first
+ * @property {"ore" | "salvage" | "gem" | null} lastMaterialKind material group of the last saved order
  */
 
 /** @type {Readonly<Settings>} */
@@ -22,6 +24,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   lastStationId: null,
   lastMethodId: null,
   quantityUnit: "cscu",
+  recentStationIds: [],
+  lastMaterialKind: null,
 });
 
 /** @type {Record<keyof Settings, (v: unknown) => boolean>} */
@@ -33,6 +37,8 @@ const CHECKS = {
   lastStationId: (v) => v === null || (typeof v === "string" && v.length > 0),
   lastMethodId: (v) => v === null || (typeof v === "string" && v.length > 0),
   quantityUnit: (v) => v === "cscu" || v === "scu",
+  recentStationIds: (v) => Array.isArray(v) && v.length <= 3 && v.every((x) => typeof x === "string" && x.length > 0),
+  lastMaterialKind: (v) => v === null || v === "ore" || v === "salvage" || v === "gem",
 };
 
 /** @returns {Promise<Settings>} defaults merged with stored values */

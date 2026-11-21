@@ -54,21 +54,32 @@
   .page {
     display: flex;
     flex-direction: column;
-    gap: var(--space-6);
-    max-width: 960px;
+    gap: var(--space-4);
+  }
+
+  .head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 var(--space-4);
+  }
+
+  .head .eyebrow {
+    flex-basis: 100%;
+    margin: 0;
   }
 
   .head h1 {
     margin: 0;
-    font-size: 40px;
+    font-size: 30px;
   }
 
   .back {
     align-self: flex-start;
     display: inline-flex;
     align-items: center;
-    min-height: var(--touch);
-    margin-bottom: calc(-1 * var(--space-4));
+    min-height: 32px;
+    margin-bottom: calc(-1 * var(--space-3));
     color: var(--color-accent);
     font-weight: 600;
     text-decoration: none;
@@ -79,7 +90,7 @@
   }
 
   .lead {
-    margin: var(--space-2) 0 0;
+    margin: 0;
   }
 
   .notice {

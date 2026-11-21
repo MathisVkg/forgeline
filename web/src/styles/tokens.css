@@ -131,6 +131,16 @@ samp,
   border-color: #74e0d6;
 }
 
+.btn-ready-outline {
+  border-color: var(--color-ready);
+  color: var(--color-ready);
+}
+
+.btn-ready-outline:hover {
+  border-color: #74e0d6;
+  background: color-mix(in srgb, var(--color-ready) 12%, transparent);
+}
+
 .btn-ghost {
   border-color: transparent;
   color: var(--color-muted);
@@ -178,8 +188,8 @@ samp,
   border: 0;
 }
 
-/* Button pickers (web/src/components/pickers): native radios / checkboxes
-   styled as buttons, so arrow keys and Space work out of the box. */
+/* Material buttons (web/src/components/pickers/MaterialPicker): native
+   checkboxes styled as buttons, so Space and Tab work out of the box. */
 .picker {
   display: flex;
   flex-direction: column;
@@ -188,27 +198,6 @@ samp,
   margin: 0;
   padding: 0;
   border: 0;
-}
-
-.picker > legend {
-  margin-bottom: var(--space-2);
-  padding: 0;
-  color: var(--color-muted);
-  font-family: var(--font-heading);
-  font-weight: 600;
-  font-size: 14px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.picker-group-title {
-  margin: 0 0 var(--space-2);
-  color: var(--color-muted);
-  font-family: var(--font-mono);
-  font-weight: 500;
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .picker-options {
@@ -265,16 +254,6 @@ samp,
   line-height: 1.25;
 }
 
-.opt-sub {
-  color: var(--color-muted);
-  font-size: 13px;
-  line-height: 1.25;
-}
-
-.opt:has(input:checked) .opt-sub {
-  color: var(--color-on-accent);
-}
-
 .opt-row {
   display: inline-flex;
   align-items: baseline;
@@ -299,6 +278,22 @@ samp,
   color: var(--color-on-accent);
 }
 
+/* Compact material buttons: 36 px from 960 px (desktop), 44 px touch below. */
+.picker-options.compact {
+  gap: 6px;
+}
+
+.opt.compact {
+  padding: 4px 10px;
+  font-size: 14px;
+}
+
+@media (min-width: 960px) {
+  .opt.compact {
+    min-height: 36px;
+  }
+}
+
 .unit-toggle {
   display: inline-flex;
   flex-wrap: wrap;
@@ -315,6 +310,14 @@ samp,
   font: inherit;
   font-size: 15px;
   cursor: pointer;
+}
+
+@media (min-width: 960px) {
+  .unit-toggle.compact button {
+    min-height: 32px;
+    padding: 0 var(--space-3);
+    font-size: 14px;
+  }
 }
 
 .unit-toggle button[aria-pressed="true"] {

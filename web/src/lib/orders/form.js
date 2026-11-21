@@ -42,7 +42,7 @@ export function fieldId(key) {
   const line = /^materials\.(\d+)\.(material|qty|yield|quality)$/.exec(key);
   if (line) return `f-${line[2] === "material" ? "qty" : line[2]}-${line[1]}`;
   /** @type {Record<string, string>} */
-  const ids = { stationId: "f-station", methodId: "f-method", materials: "f-mat-search", costAuec: "f-cost", durationSec: "f-time", title: "f-title", capacityPct: "f-capacity" };
+  const ids = { stationId: "f-station", methodId: "f-method", materials: "f-materials", costAuec: "f-cost", durationSec: "f-time", title: "f-title", capacityPct: "f-capacity" };
   return ids[key] ?? "f-station";
 }
 

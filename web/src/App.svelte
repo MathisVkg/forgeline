@@ -108,8 +108,8 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-3) var(--space-6);
-    padding-top: var(--space-3);
-    padding-bottom: var(--space-3);
+    padding-top: var(--space-2);
+    padding-bottom: var(--space-2);
   }
 
   .brand {
@@ -178,21 +178,22 @@
 
   .main {
     flex: 1;
-    padding-top: var(--space-8);
-    padding-bottom: var(--space-8);
+    padding-top: var(--space-4);
+    padding-bottom: var(--space-4);
   }
 
   .footer {
     border-top: 1px solid var(--color-border);
     background: var(--color-panel);
     color: var(--color-muted);
-    font-size: 14px;
+    font-size: 13px;
+    line-height: 1.45;
   }
 
   .footer p {
     margin: 0 auto;
-    padding-top: var(--space-6);
-    padding-bottom: var(--space-6);
+    padding-top: 10px;
+    padding-bottom: 10px;
   }
 
   @media (max-width: 480px) {

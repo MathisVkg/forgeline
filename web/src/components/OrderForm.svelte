@@ -2,10 +2,11 @@
   import { tick, untrack } from "svelte";
   import { endsAt, formatAuec, formatCountdown, formatDuration, formatEndTime, formatScu, parseDuration } from "@forgeline/shared";
   import { bonusFor } from "../lib/calculator/logic.js";
-  import { bonusLabel, toggleMaterialLine } from "../lib/pickers.js";
-  import StationPicker from "./pickers/StationPicker.svelte";
-  import MethodPicker from "./pickers/MethodPicker.svelte";
+  import { bonusLabel, materialKindOf, methodOptions, stationOptions, toggleMaterialLine } from "../lib/pickers.js";
+  import Combobox from "./pickers/Combobox.svelte";
+  import RecentStations from "./pickers/RecentStations.svelte";
   import MaterialPicker from "./pickers/MaterialPicker.svelte";
+  import { prefs, pushRecentStation, setLastMaterialKind } from "../lib/stores/prefs.svelte.js";
   import UnitToggle from "./pickers/UnitToggle.svelte";
   import {
     MAX_FORM_LINES,
@@ -58,6 +59,11 @@
   /** @type {Set<string>} */
   let touched = $state(new Set());
 
+  const stationOpts = $derived(stationOptions(gameData.staticData?.stations));
+  const methodOpts = $derived(methodOptions(gameData.staticData?.methods));
+  // two columns from 1100 px (wording of the empty-lines hint only)
+  let innerWidth = $state(typeof window === "undefined" ? 1280 : window.innerWidth);
+  const wide = $derived(innerWidth >= 1100);
   const ctx = $derived({
     mode,
     staticData: gameData.staticData,
@@ -151,6 +157,8 @@
         if (mode === "estimate") clearDraft();
       }
       await updateSettings({ lastStationId: values.stationId, lastMethodId: values.methodId }).catch(() => {});
+      pushRecentStation(values.stationId);
+      setLastMaterialKind(materialKindOf(values.lines.map((l) => l.materialId), gameData.staticData?.materials));
       location.hash = "#/orders";
     } catch (err) {
       formError = err instanceof Error ? err.message : "The order could not be saved.";
@@ -170,58 +178,65 @@
   const described = (key) => (errors[key] ? `${fieldId(key)}-error` : undefined);
 </script>
 
-{#if mode !== "edit"}
-  <div class="modes" role="group" aria-label="How did you start this order?">
-    <button type="button" class="mode" aria-pressed={mode === "manual"} onclick={() => switchMode("manual")}>Started in game</button>
-    <button
-      type="button"
-      class="mode"
-      aria-pressed={mode === "estimate"}
-      disabled={!savedDraft}
-      title={savedDraft ? undefined : "Use “Save as order” in the calculator first"}
-      onclick={() => switchMode("estimate")}>From estimate</button
-    >
-  </div>
-{/if}
+<svelte:window bind:innerWidth />
 
-{#if draftLost}
-  <p class="notice" role="status">
-    The estimate was lost when the page reloaded. <a href="#/calculator">Go back to the calculator</a> or fill in the form.
-  </p>
-{/if}
+<form novalidate onsubmit={submit} class="order-form">
+  <!-- LEFT: how / where / which method / which materials -->
+  <div class="col">
+    {#if mode !== "edit"}
+      <div class="modes" role="group" aria-label="How did you start this order?">
+        <button type="button" class="mode" aria-pressed={mode === "manual"} onclick={() => switchMode("manual")}>Started in game</button>
+        <button
+          type="button"
+          class="mode"
+          aria-pressed={mode === "estimate"}
+          disabled={!savedDraft}
+          title={savedDraft ? undefined : "Use “Save as order” in the calculator first"}
+          onclick={() => switchMode("estimate")}>From estimate</button
+        >
+      </div>
+    {/if}
 
-{#if mode === "estimate" && savedDraft}
-  <aside class="estimate" aria-label="Estimate">
-    <p class="estimate-title">Estimate · {gameData.methodName(savedDraft.snapshot.methodId)}</p>
-    <dl>
-      <div><dt>Est. yield</dt><dd class="num">{formatScu(savedDraft.snapshot.totalRefinedCScu)}</dd></div>
-      <div><dt>Est. cost</dt><dd class="num">{formatAuec(savedDraft.snapshot.costAuec)}</dd></div>
-      <div><dt>Est. time</dt><dd class="num">{formatDuration(savedDraft.snapshot.durationSec)}</dd></div>
-    </dl>
-    <p class="hint">Compare with the terminal and type the terminal's numbers below.</p>
-  </aside>
-{/if}
+    {#if draftLost}
+      <p class="notice" role="status">
+        The estimate was lost when the page reloaded. <a href="#/calculator">Go back to the calculator</a> or fill in the form.
+      </p>
+    {/if}
 
-<form novalidate onsubmit={submit}>
-  <StationPicker
-    bind:value={values.stationId}
-    stations={gameData.staticData?.stations}
-    id="f-station"
-    name="order-station"
-    error={err("stationId")}
-    onblur={() => touch("stationId")}
-  />
+    {#if mode === "estimate" && savedDraft}
+      <aside class="estimate" aria-label="Estimate">
+        <span class="estimate-title">Estimate · {gameData.methodName(savedDraft.snapshot.methodId)}</span>
+        <span>Yield <span class="num">{formatScu(savedDraft.snapshot.totalRefinedCScu)}</span></span>
+        <span>Cost <span class="num">{formatAuec(savedDraft.snapshot.costAuec)}</span></span>
+        <span>Time <span class="num">{formatDuration(savedDraft.snapshot.durationSec)}</span></span>
+      </aside>
+    {/if}
 
-  <MethodPicker
-    bind:value={values.methodId}
-    methods={gameData.staticData?.methods}
-    id="f-method"
-    name="order-method"
-    error={err("methodId")}
-    onblur={() => touch("methodId")}
-  />
+    <div class="station-row">
+      <Combobox
+        bind:value={values.stationId}
+        options={stationOpts}
+        id="f-station"
+        label="Station"
+        placeholder="Type a station, e.g. MIC-L2"
+        picker="station"
+        error={err("stationId")}
+        onblur={() => touch("stationId")}
+      />
+      <RecentStations stations={gameData.staticData?.stations} value={values.stationId} onpick={(id) => (values.stationId = id)} />
+    </div>
 
-  <div class="materials">
+    <Combobox
+      bind:value={values.methodId}
+      options={methodOpts}
+      id="f-method"
+      label="Method"
+      placeholder="Type a method, e.g. Dinyx"
+      picker="method"
+      error={err("methodId")}
+      onblur={() => touch("methodId")}
+    />
+
     <MaterialPicker
       selected={values.lines.map((l) => l.materialId)}
       ontoggle={toggleLine}
@@ -229,183 +244,247 @@
       bonuses={gameData.staticData?.bonuses}
       stationId={values.stationId}
       max={MAX_FORM_LINES}
-      id="f-mat-search"
+      defaultKind={prefs.lastMaterialKind}
+      id="f-materials"
       error={err("materials")}
     />
+  </div>
 
-    {#if values.lines.length}
-      <div class="unit-row">
-        <UnitToggle onchange={onUnitChange} />
-        <p class="hint">Copy the YIELD column to track your real output.</p>
+  <!-- RIGHT: what the terminal shows -->
+  <div class="col">
+    <div class="lines">
+      <div class="lines-head">
+        <span class="lines-title">Quantities</span>
+        <UnitToggle compact onchange={onUnitChange} />
+      </div>
+      {#if values.lines.length === 0}
+        <p class="hint empty-lines">Pick the materials on the {wide ? "left" : "list above"}; a line for each appears here.</p>
+      {:else}
+        <p class="hint">Copy QTY and the YIELD column from the terminal.</p>
+      {/if}
+
+      {#each values.lines as line, i (line.key)}
+        {@const lineErrors = ["material", "qty", "yield", "quality"].map((f) => err(`materials.${i}.${f}`)).filter(Boolean)}
+        {@const bonus = bonusLabel(bonusFor(gameData.staticData, values.stationId, line.materialId))}
+        {@const name = gameData.materialName(line.materialId)}
+        <div class="line" class:more={showMore}>
+          <div class="line-name">
+            <span class="material-name">{name}</span>
+            {#if bonus}<span class="bonus-tag {bonus.tone}">{bonus.text} yield here</span>{/if}
+          </div>
+          <div class="field qty">
+            <label for="f-qty-{i}">Qty <span class="unit-tag">{unitLabel}</span></label>
+            <input
+              id="f-qty-{i}"
+              type="text"
+              inputmode={values.unit === "cscu" ? "numeric" : "decimal"}
+              autocomplete="off"
+              placeholder={values.unit === "cscu" ? "43200" : "432"}
+              bind:value={line.qtyText}
+              onblur={() => touch(`materials.${i}.qty`)}
+              aria-invalid={err(`materials.${i}.qty`) || err(`materials.${i}.material`) ? "true" : undefined}
+              aria-describedby={lineErrors.length ? `f-line-${i}-error` : undefined}
+            />
+          </div>
+          <div class="field yield">
+            <label for="f-yield-{i}">Yield <span class="unit-tag">{unitLabel}</span></label>
+            <input
+              id="f-yield-{i}"
+              type="text"
+              inputmode={values.unit === "cscu" ? "numeric" : "decimal"}
+              autocomplete="off"
+              placeholder="optional"
+              bind:value={line.yieldText}
+              onblur={() => touch(`materials.${i}.yield`)}
+              aria-invalid={err(`materials.${i}.yield`) ? "true" : undefined}
+              aria-describedby={lineErrors.length ? `f-line-${i}-error` : undefined}
+            />
+          </div>
+          {#if showMore}
+            <div class="field quality">
+              <label for="f-quality-{i}">Quality</label>
+              <input
+                id="f-quality-{i}"
+                type="text"
+                inputmode="numeric"
+                autocomplete="off"
+                placeholder="0"
+                bind:value={line.qualityText}
+                onblur={() => touch(`materials.${i}.quality`)}
+                aria-invalid={err(`materials.${i}.quality`) ? "true" : undefined}
+              />
+            </div>
+          {/if}
+          <button type="button" class="remove" aria-label="Remove {name}" onclick={() => removeLine(line.key)}>×</button>
+          {#if lineErrors.length}
+            <p class="error line-error" id="f-line-{i}-error">{lineErrors.join(" ")}</p>
+          {/if}
+        </div>
+      {/each}
+    </div>
+
+    <div class="row two">
+      <div class="field">
+        <label for="f-cost">Total cost <span class="unit-tag">aUEC</span> <span class="optional">optional</span></label>
+        <input
+          id="f-cost"
+          type="text"
+          inputmode="decimal"
+          autocomplete="off"
+          placeholder="3455.00"
+          bind:value={values.costText}
+          onblur={() => touch("costAuec")}
+          aria-invalid={err("costAuec") ? "true" : undefined}
+          aria-describedby={described("costAuec")}
+        />
+        {#if err("costAuec")}<p class="error" id="f-cost-error">{err("costAuec")}</p>{/if}
+      </div>
+
+      <div class="field">
+        <label for="f-time">Time left</label>
+        <div class="time-row">
+          <input
+            id="f-time"
+            type="text"
+            autocomplete="off"
+            placeholder="43h 12m"
+            readonly={!timeEditable}
+            bind:value={values.timeText}
+            onblur={() => touch("durationSec")}
+            aria-invalid={err("durationSec") ? "true" : undefined}
+            aria-describedby={err("durationSec") ? "f-time-error" : "f-time-help"}
+          />
+          {#if !timeEditable}
+            <button type="button" class="btn" onclick={startChangeTime}>Change time</button>
+          {/if}
+        </div>
+        {#if err("durationSec")}
+          <p class="error" id="f-time-error">{err("durationSec")}</p>
+        {/if}
+      </div>
+    </div>
+    <p class="hint" id="f-time-help">
+      {#if timeEditable}
+        Time left: the terminal's PROCESSING TIME for a new order, or the time left in the work order list.
+      {:else}
+        Current time left. Keep it to leave the end time unchanged.
+      {/if}
+    </p>
+    {#if preview}
+      <p class="preview">
+        <span class="label">Ready at</span>
+        <span class="num">{formatEndTime(preview.at, preview.now)}</span>
+        <span class="muted">· {formatCountdown(preview.at, preview.now)}</span>
+      </p>
+    {/if}
+
+    <div class="field">
+      <label for="f-title">Title <span class="optional">optional</span></label>
+      <input
+        id="f-title"
+        type="text"
+        autocomplete="off"
+        maxlength="60"
+        placeholder={check.title || "Generated from the first material and station"}
+        bind:value={values.title}
+        onblur={() => touch("title")}
+        aria-invalid={err("title") ? "true" : undefined}
+        aria-describedby={described("title")}
+      />
+      {#if err("title")}<p class="error" id="f-title-error">{err("title")}</p>{/if}
+    </div>
+
+    <button type="button" class="more-toggle" aria-expanded={showMore} aria-controls="more-fields" onclick={() => (showMore = !showMore)}>
+      {showMore ? "▾" : "▸"} More fields <span class="muted">(capacity, quality)</span>
+    </button>
+    {#if showMore}
+      <div class="field capacity" id="more-fields">
+        <label for="f-capacity">Refinery capacity <span class="unit-tag">%</span></label>
+        <input
+          id="f-capacity"
+          type="text"
+          inputmode="numeric"
+          autocomplete="off"
+          placeholder="336"
+          bind:value={values.capacityText}
+          onblur={() => touch("capacityPct")}
+          aria-invalid={err("capacityPct") ? "true" : undefined}
+          aria-describedby={described("capacityPct")}
+        />
+        {#if err("capacityPct")}<p class="error" id="f-capacity-error">{err("capacityPct")}</p>{:else}<p class="hint">
+            The terminal's CURRENT CAPACITY. Quality is per material line above.
+          </p>{/if}
       </div>
     {/if}
 
-    {#each values.lines as line, i (line.key)}
-      {@const lineErrors = ["material", "qty", "yield", "quality"].map((f) => err(`materials.${i}.${f}`)).filter(Boolean)}
-      {@const bonus = bonusLabel(bonusFor(gameData.staticData, values.stationId, line.materialId))}
-      {@const name = gameData.materialName(line.materialId)}
-      <div class="line" class:more={showMore}>
-        <div class="line-name">
-          <span class="material-name">{name}</span>
-          {#if bonus}<span class="bonus-tag {bonus.tone}">{bonus.text} yield at this station</span>{/if}
-        </div>
-        <div class="field qty">
-          <label for="f-qty-{i}">Qty <span class="unit-tag">{unitLabel}</span></label>
-          <input
-            id="f-qty-{i}"
-            type="text"
-            inputmode={values.unit === "cscu" ? "numeric" : "decimal"}
-            autocomplete="off"
-            placeholder={values.unit === "cscu" ? "43200" : "432"}
-            bind:value={line.qtyText}
-            onblur={() => touch(`materials.${i}.qty`)}
-            aria-invalid={err(`materials.${i}.qty`) || err(`materials.${i}.material`) ? "true" : undefined}
-            aria-describedby={lineErrors.length ? `f-line-${i}-error` : undefined}
-          />
-        </div>
-        <div class="field yield">
-          <label for="f-yield-{i}">Yield <span class="unit-tag">{unitLabel}</span></label>
-          <input
-            id="f-yield-{i}"
-            type="text"
-            inputmode={values.unit === "cscu" ? "numeric" : "decimal"}
-            autocomplete="off"
-            placeholder="optional"
-            bind:value={line.yieldText}
-            onblur={() => touch(`materials.${i}.yield`)}
-            aria-invalid={err(`materials.${i}.yield`) ? "true" : undefined}
-            aria-describedby={lineErrors.length ? `f-line-${i}-error` : undefined}
-          />
-        </div>
-        {#if showMore}
-          <div class="field quality">
-            <label for="f-quality-{i}">Quality</label>
-            <input
-              id="f-quality-{i}"
-              type="text"
-              inputmode="numeric"
-              autocomplete="off"
-              placeholder="0"
-              bind:value={line.qualityText}
-              onblur={() => touch(`materials.${i}.quality`)}
-              aria-invalid={err(`materials.${i}.quality`) ? "true" : undefined}
-            />
-          </div>
-        {/if}
-        <button type="button" class="remove" aria-label="Remove {name}" onclick={() => removeLine(line.key)}>×</button>
-        {#if lineErrors.length}
-          <p class="error line-error" id="f-line-{i}-error">{lineErrors.join(" ")}</p>
-        {/if}
-      </div>
-    {/each}
-  </div>
+    {#if formError}<p class="error" role="alert">{formError}</p>{/if}
 
-  <div class="row two">
-    <div class="field">
-      <label for="f-cost">Total cost <span class="unit-tag">aUEC</span></label>
-      <input
-        id="f-cost"
-        type="text"
-        inputmode="decimal"
-        autocomplete="off"
-        placeholder="3455.00"
-        bind:value={values.costText}
-        onblur={() => touch("costAuec")}
-        aria-invalid={err("costAuec") ? "true" : undefined}
-        aria-describedby={described("costAuec")}
-      />
-      {#if err("costAuec")}<p class="error" id="f-cost-error">{err("costAuec")}</p>{:else}<p class="hint">Optional. As shown: 3455.00</p>{/if}
+    <div class="actions">
+      <button type="submit" class="btn btn-primary" disabled={busy}>{mode === "edit" ? "Save changes" : "Save order"}</button>
+      <button type="button" class="btn" onclick={cancel}>Cancel</button>
     </div>
-
-    <div class="field">
-      <label for="f-time">Time left</label>
-      <div class="time-row">
-        <input
-          id="f-time"
-          type="text"
-          autocomplete="off"
-          placeholder="43h 12m"
-          readonly={!timeEditable}
-          bind:value={values.timeText}
-          onblur={() => touch("durationSec")}
-          aria-invalid={err("durationSec") ? "true" : undefined}
-          aria-describedby={err("durationSec") ? "f-time-error" : "f-time-help"}
-        />
-        {#if !timeEditable}
-          <button type="button" class="btn" onclick={startChangeTime}>Change time</button>
-        {/if}
-      </div>
-      {#if err("durationSec")}
-        <p class="error" id="f-time-error">{err("durationSec")}</p>
-      {:else}
-        <p class="hint" id="f-time-help">
-          {#if timeEditable}
-            For a new order, the terminal's PROCESSING TIME. For a running order, the time left in the work order list.
-          {:else}
-            Current time left. Keep it to leave the end time unchanged.
-          {/if}
-        </p>
-      {/if}
-      {#if preview}
-        <p class="preview">
-          <span class="label">Ready at</span>
-          <span class="num">{formatEndTime(preview.at, preview.now)}</span>
-          <span class="muted">· {formatCountdown(preview.at, preview.now)}</span>
-        </p>
-      {/if}
-    </div>
-  </div>
-
-  <div class="field">
-    <label for="f-title">Title <span class="optional">optional</span></label>
-    <input
-      id="f-title"
-      type="text"
-      autocomplete="off"
-      maxlength="60"
-      placeholder={check.title || "Generated from the first material and station"}
-      bind:value={values.title}
-      onblur={() => touch("title")}
-      aria-invalid={err("title") ? "true" : undefined}
-      aria-describedby={described("title")}
-    />
-    {#if err("title")}<p class="error" id="f-title-error">{err("title")}</p>{/if}
-  </div>
-
-  <button type="button" class="more-toggle" aria-expanded={showMore} aria-controls="more-fields" onclick={() => (showMore = !showMore)}>
-    {showMore ? "▾" : "▸"} More fields <span class="muted">(capacity, quality)</span>
-  </button>
-  {#if showMore}
-    <div class="field capacity" id="more-fields">
-      <label for="f-capacity">Refinery capacity <span class="unit-tag">%</span></label>
-      <input
-        id="f-capacity"
-        type="text"
-        inputmode="numeric"
-        autocomplete="off"
-        placeholder="336"
-        bind:value={values.capacityText}
-        onblur={() => touch("capacityPct")}
-        aria-invalid={err("capacityPct") ? "true" : undefined}
-        aria-describedby={described("capacityPct")}
-      />
-      {#if err("capacityPct")}<p class="error" id="f-capacity-error">{err("capacityPct")}</p>{:else}<p class="hint">The terminal's CURRENT CAPACITY. Quality is per material line above.</p>{/if}
-    </div>
-  {/if}
-
-  {#if formError}<p class="error" role="alert">{formError}</p>{/if}
-
-  <div class="actions">
-    <button type="submit" class="btn btn-primary" disabled={busy}>{mode === "edit" ? "Save changes" : "Save order"}</button>
-    <button type="button" class="btn" onclick={cancel}>Cancel</button>
   </div>
 </form>
 
 <style>
-  form {
+  .order-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4) var(--space-6);
+    align-items: start;
+  }
+
+  /* Two equal columns from 1100 px: where/what on the left, terminal numbers on the right. */
+  @media (min-width: 1100px) {
+    .order-form {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  .col {
     display: flex;
     flex-direction: column;
-    gap: var(--space-4);
+    gap: var(--space-3);
+    min-width: 0;
+  }
+
+  .station-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-2) var(--space-3);
+  }
+
+  .station-row > :global(.combo) {
+    flex: 1 1 240px;
+  }
+
+  .lines {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .lines-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .lines-title {
+    color: var(--color-muted);
+    font-family: var(--font-heading);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .empty-lines {
+    padding: var(--space-3);
+    border: 1px dashed var(--color-border);
   }
 
   .modes {
@@ -444,26 +523,19 @@
   }
 
   .estimate {
-    padding: var(--space-3) var(--space-4);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-1) var(--space-4);
+    padding: var(--space-2) var(--space-3);
     border: 1px solid var(--color-border);
     border-left: 4px solid var(--color-ready);
     background: var(--color-panel);
+    font-size: 14px;
   }
 
   .estimate-title {
-    margin: 0 0 var(--space-2);
     font-weight: 600;
-  }
-
-  .estimate dl {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2) var(--space-6);
-    margin: 0;
-  }
-
-  .estimate dd {
-    margin: 0;
   }
 
   .row.two {
@@ -486,7 +558,6 @@
   }
 
   label,
-  dt,
   .label {
     color: var(--color-muted);
     font-family: var(--font-heading);
