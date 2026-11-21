@@ -9,6 +9,9 @@ export const MAX_LINES = 20;
 export const MIN_DURATION_SEC = 60;
 /** Upper bound for capacityPct and quality (terminal values). */
 export const MAX_PERCENT_FIELD = 1000;
+/** Refined (yield) may be at most this × raw on a line; more means a unit mix-up. */
+export const MAX_YIELD_RATIO = 1.3;
+export const YIELD_TOO_LARGE = "Yield is larger than the quantity. Check the unit (cSCU or SCU).";
 const DAY_MS = 86_400_000;
 
 /** @typedef {"refining" | "collected" | "cancelled"} OrderStatus */
@@ -97,9 +100,11 @@ const isUint = (v) => typeof v === "number" && Number.isInteger(v) && v >= 0;
  * costAuec, capacityPct, source, patch, shared, estimate.
  * @param {any} input
  * @param {StaticDataIds | null} [staticData] skip id checks when missing (offline)
+ * @param {{ legacy?: boolean }} [options] legacy: skip rules added after data
+ *   was stored (yield ≤ 1.3 × qty), so loading or importing never drops orders
  * @returns {ValidationResult}
  */
-export function validateOrderInput(input, staticData) {
+export function validateOrderInput(input, staticData, options = {}) {
   /** @type {Record<string, string>} */
   const errors = {};
   if (!isObject(input)) return { ok: false, errors: { form: "Order data is missing." } };
@@ -129,6 +134,7 @@ export function validateOrderInput(input, staticData) {
       else if (seen.has(line.materialId)) errors[key] = "This material is already in the order. Add the quantities together.";
       else if (!Number.isInteger(line.rawCScu) || line.rawCScu < 1) errors[key] = "Enter a quantity of at least 0.01 SCU.";
       else if (line.refinedCScu != null && !isUint(line.refinedCScu)) errors[key] = "Refined quantity must be 0 SCU or more.";
+      else if (!options.legacy && line.refinedCScu != null && line.refinedCScu > MAX_YIELD_RATIO * line.rawCScu) errors[key] = YIELD_TOO_LARGE;
       else if (line.quality != null && !(isUint(line.quality) && line.quality <= MAX_PERCENT_FIELD))
         errors[key] = `Quality must be a whole number from 0 to ${MAX_PERCENT_FIELD}.`;
       seen.add(line.materialId);
@@ -397,7 +403,7 @@ export function migrateOrder(raw) {
     patch: typeof raw.patch === "string" && raw.patch ? raw.patch : null,
     shared: raw.shared === true,
   };
-  if (!validateOrderInput(input).ok) return null;
+  if (!validateOrderInput(input, null, { legacy: true }).ok) return null;
 
   const status = /** @type {OrderStatus} */ (raw.status);
   return {

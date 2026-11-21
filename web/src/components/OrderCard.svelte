@@ -3,7 +3,7 @@
   import { isReady, progress } from "../lib/storage/model.js";
   import { orderValue } from "../lib/orders/value.js";
   import { materialsLine, orderOutput } from "../lib/orders/view.js";
-  import { cancelOrder, deleteWithUndo, markCollected } from "../lib/orders/actions.svelte.js";
+  import { cancelOrder, markCollected } from "../lib/orders/actions.svelte.js";
   import { gameData } from "../lib/stores/gameData.svelte.js";
 
   /** @type {{ order: import("../lib/storage/model.js").Order, nowMs: number }} */
@@ -16,8 +16,7 @@
   const output = $derived(orderOutput(order));
   const titleId = $derived(`order-${order.id}`);
 
-  /** @type {null | "cancel" | "delete"} */
-  let confirming = $state(null);
+  let confirming = $state(false);
   let busy = $state(false);
   /** @type {HTMLButtonElement | undefined} */
   let keepButton = $state();
@@ -33,7 +32,7 @@
       await action();
     } finally {
       busy = false;
-      confirming = null;
+      confirming = false;
     }
   }
 </script>
@@ -41,12 +40,11 @@
 <article class="card" class:ready aria-labelledby={titleId}>
   <div class="bar" aria-hidden="true"></div>
   <div class="body">
-    <div class="top">
-      <span class="badge" class:badge-ready={ready}>
-        {#if ready}READY{:else}{countdown.toUpperCase()}{/if}
-      </span>
-      <span class="sr-only" aria-live="polite">{ready ? "Ready to collect" : ""}</span>
-    </div>
+    <!-- Ready cards get a badge; the countdown of refining cards is in the footer. -->
+    {#if ready}
+      <div class="top"><span class="badge badge-ready">READY</span></div>
+    {/if}
+    <span class="sr-only" aria-live="polite">{ready ? "Ready to collect" : ""}</span>
 
     <h2 id={titleId}>{order.title}</h2>
     <p class="station">{gameData.stationName(order.stationId)}</p>
@@ -91,14 +89,10 @@
 
     {#if confirming}
       <div class="confirm" role="group" aria-label="Confirm">
-        <p>{confirming === "delete" ? "Delete this order?" : "Cancel this order?"}</p>
+        <p>Cancel this order? It moves to history.</p>
         <div class="actions">
-          {#if confirming === "delete"}
-            <button type="button" class="btn btn-danger" disabled={busy} onclick={() => run(() => deleteWithUndo(order))}>Delete</button>
-          {:else}
-            <button type="button" class="btn btn-danger" disabled={busy} onclick={() => run(() => cancelOrder(order))}>Cancel order</button>
-          {/if}
-          <button type="button" class="btn" bind:this={keepButton} onclick={() => (confirming = null)}>Keep</button>
+          <button type="button" class="btn btn-danger" disabled={busy} onclick={() => run(() => cancelOrder(order))}>Cancel order</button>
+          <button type="button" class="btn" bind:this={keepButton} onclick={() => (confirming = false)}>Keep</button>
         </div>
       </div>
     {:else}
@@ -111,8 +105,7 @@
         >
         <a class="btn" href="#/new?edit={encodeURIComponent(order.id)}">Edit</a>
         <span class="spacer"></span>
-        <button type="button" class="btn btn-ghost" onclick={() => (confirming = "cancel")}>Cancel order</button>
-        <button type="button" class="btn btn-ghost" onclick={() => (confirming = "delete")}>Delete</button>
+        <button type="button" class="btn btn-ghost" onclick={() => (confirming = true)}>Cancel</button>
       </div>
     {/if}
   </div>

@@ -1,37 +1,36 @@
 <script>
+  import { untrack } from "svelte";
   import { formatAge, formatAuec, formatDuration, formatScu } from "@forgeline/shared";
   import { calc } from "../lib/calculator/state.svelte.js";
-  import {
-    DRAFT_ROUTE,
-    MAX_CALC_LINES,
-    bonusFor,
-    buildDraft,
-    groupMaterials,
-    groupStations,
-    refinedPricesDate,
-    stationLabel,
-    usedElsewhere,
-  } from "../lib/calculator/logic.js";
+  import { DRAFT_ROUTE, MAX_CALC_LINES, bonusFor, buildDraft, refinedPricesDate } from "../lib/calculator/logic.js";
+  import { bonusLabel } from "../lib/pickers.js";
   import { gameData } from "../lib/stores/gameData.svelte.js";
   import { ordersState } from "../lib/stores/orders.svelte.js";
+  import { prefs } from "../lib/stores/prefs.svelte.js";
   import { setDraft } from "../lib/stores/draft.svelte.js";
+  import StationPicker from "../components/pickers/StationPicker.svelte";
+  import MaterialPicker from "../components/pickers/MaterialPicker.svelte";
+  import UnitToggle from "../components/pickers/UnitToggle.svelte";
 
-  const stationGroups = $derived(groupStations(gameData.staticData));
-  const materialGroups = $derived(groupMaterials(gameData.staticData));
   const result = $derived(calc.result);
   const missing = $derived(result?.methods[0]?.missingPrices ?? []);
   const pricesAt = $derived(refinedPricesDate(result, gameData.staticData, gameData.prices));
   const selectedName = $derived(calc.selected ? gameData.methodName(calc.selected) : null);
+  const unitLabel = $derived(calc.unit === "cscu" ? "cSCU" : "SCU");
 
-  // Restore saved inputs once game data is known, then save on every change.
+  // Restore saved inputs once game data and prefs are known, then save on every change.
   $effect(() => {
-    if (gameData.staticData) calc.restore();
+    if (gameData.staticData && prefs.loaded) calc.restore();
   });
   $effect(() => {
     if (!calc.restored) return;
-    // read everything that is persisted so the effect tracks it
-    void [calc.stationId, calc.sortBy, calc.selectedMethodId, ...calc.lines.map((l) => l.materialId + l.scuText)];
+    void [calc.stationId, calc.sortBy, calc.selectedMethodId, calc.unit, ...calc.lines.map((l) => l.materialId + l.qtyText)];
     calc.save();
+  });
+  // The unit is shared with the order form: follow it, converting typed text.
+  $effect(() => {
+    const unit = prefs.quantityUnit;
+    if (calc.restored) untrack(() => calc.setUnit(unit));
   });
 
   function saveAsOrder() {
@@ -42,7 +41,7 @@
 
   /** @param {string} id */
   const materialName = (id) => gameData.materialName(id);
-  // Table cells show numbers only; the unit is in the column header.
+  // Table cells show numbers only; units are in the row under the header.
   /** @param {number} n */
   const auec = (n) => formatAuec(n).replace(/ aUEC$/, "");
   /** @param {number} c */
@@ -69,73 +68,54 @@
         <p class="step">Step 01</p>
         <h2 id="load-title">Raw load</h2>
 
-        <div class="field">
-          <label for="calc-station">Refinery station</label>
-          <select id="calc-station" bind:value={calc.stationId}>
-            <option value="">Choose a station…</option>
-            {#each stationGroups as group (group.system)}
-              <optgroup label={group.system}>
-                {#each group.stations as s (s.id)}
-                  <option value={s.id}>{stationLabel(s)}</option>
-                {/each}
-              </optgroup>
-            {/each}
-          </select>
-        </div>
+        <StationPicker bind:value={calc.stationId} stations={gameData.staticData.stations} id="calc-station" name="calc-station" label="Refinery station" />
 
-        <fieldset class="lines">
-          <legend>Materials</legend>
-          {#each calc.lines as line, i (line.key)}
-            {@const parsed = calc.parsed[i]}
-            {@const used = usedElsewhere(calc.lines, line.key)}
-            {@const bonus = bonusFor(gameData.staticData, calc.stationId, line.materialId)}
-            <div class="line">
-              <div class="line-inputs">
-                <label class="sr-only" for="mat-{line.key}">Material {i + 1}</label>
-                <select id="mat-{line.key}" bind:value={line.materialId}>
-                  <option value="">Material…</option>
-                  {#each materialGroups as group (group.label)}
-                    <optgroup label={group.label}>
-                      {#each group.items as m (m.id)}
-                        <option value={m.id} disabled={used.has(m.id)}>{m.name}</option>
-                      {/each}
-                    </optgroup>
-                  {/each}
-                </select>
-                <label class="sr-only" for="scu-{line.key}">Raw SCU for material {i + 1}</label>
-                <div class="scu">
+        <MaterialPicker
+          selected={calc.lines.map((l) => l.materialId)}
+          ontoggle={(id) => calc.toggleMaterial(id)}
+          materials={gameData.staticData.materials}
+          bonuses={gameData.staticData.bonuses}
+          stationId={calc.stationId}
+          max={MAX_CALC_LINES}
+          id="calc-mat-search"
+        />
+
+        {#if calc.lines.length}
+          <div class="lines">
+            <UnitToggle />
+            {#each calc.lines as line, i (line.key)}
+              {@const parsed = calc.parsed[i]}
+              {@const bonus = bonusLabel(bonusFor(gameData.staticData, calc.stationId, line.materialId))}
+              {@const name = materialName(line.materialId)}
+              <div class="line">
+                <div class="line-name">
+                  <span class="material-name">{name}</span>
+                  {#if bonus}
+                    <span class="bonus-tag {bonus.tone}" id="bonus-{line.key}">{bonus.text} yield at this station</span>
+                  {/if}
+                </div>
+                <label class="sr-only" for="qty-{line.key}">Raw quantity of {name} in {unitLabel}</label>
+                <div class="qty">
                   <input
-                    id="scu-{line.key}"
+                    id="qty-{line.key}"
                     type="text"
-                    inputmode="decimal"
+                    inputmode={calc.unit === "cscu" ? "numeric" : "decimal"}
                     autocomplete="off"
                     placeholder="0"
-                    bind:value={line.scuText}
+                    bind:value={line.qtyText}
                     aria-invalid={parsed?.error ? "true" : undefined}
                     aria-describedby={parsed?.error ? `err-${line.key}` : bonus ? `bonus-${line.key}` : undefined}
                   />
-                  <span class="unit" aria-hidden="true">SCU</span>
+                  <span class="unit" aria-hidden="true">{unitLabel}</span>
                 </div>
-                <button
-                  type="button"
-                  class="remove"
-                  aria-label="Remove material {i + 1}"
-                  onclick={() => calc.removeLine(line.key)}>×</button
-                >
+                <button type="button" class="remove" aria-label="Remove {name}" onclick={() => calc.removeLine(line.key)}>×</button>
+                {#if parsed?.error}
+                  <p class="field-error" id="err-{line.key}">{parsed.error}</p>
+                {/if}
               </div>
-              {#if parsed?.error}
-                <p class="field-error" id="err-{line.key}">{parsed.error}</p>
-              {:else if bonus}
-                <p class="bonus" class:penalty={bonus < 0} id="bonus-{line.key}">
-                  {bonus > 0 ? "+" : "−"}{Math.abs(bonus)}% yield at this station
-                </p>
-              {/if}
-            </div>
-          {/each}
-          <button type="button" class="btn add" disabled={calc.lines.length >= MAX_CALC_LINES} onclick={() => calc.addLine()}>
-            + Add material
-          </button>
-        </fieldset>
+            {/each}
+          </div>
+        {/if}
 
         <dl class="totals">
           <div>
@@ -164,7 +144,7 @@
           </div>
         </dl>
 
-        <button type="button" class="btn btn-ghost" onclick={() => calc.clear()}>Clear</button>
+        <button type="button" class="btn btn-ghost clear" onclick={() => calc.clear()}>Clear</button>
       </section>
 
       <!-- RIGHT: compare methods -->
@@ -175,6 +155,10 @@
         <p class="source">
           {calc.source.text}{#if pricesAt}{" · "}Prices from {formatAge(pricesAt, ordersState.nowMs)}{/if}
         </p>
+
+        {#if calc.load.mixed}
+          <p class="note">This load mixes ores and salvage, so your own orders are not used for it: baseline estimates only.</p>
+        {/if}
 
         {#if calc.provisional}
           <p class="provisional">
@@ -210,11 +194,19 @@
               <thead>
                 <tr>
                   <th scope="col" class="method-col">Method</th>
-                  <th scope="col">Yield <span class="unit-h">SCU</span></th>
-                  <th scope="col">Cost <span class="unit-h">aUEC</span></th>
+                  <th scope="col" abbr="Refined yield in SCU">Yield</th>
+                  <th scope="col" abbr="Cost in aUEC">Cost</th>
                   <th scope="col">Time</th>
-                  <th scope="col">Net profit <span class="unit-h">aUEC</span></th>
-                  <th scope="col">Per hour <span class="unit-h">aUEC</span></th>
+                  <th scope="col" abbr="Net profit in aUEC">Net</th>
+                  <th scope="col" abbr="Profit per hour in aUEC"><span aria-hidden="true">/h</span><span class="sr-only">Per hour</span></th>
+                </tr>
+                <tr class="units-row" aria-hidden="true">
+                  <td class="method-col"></td>
+                  <td>SCU</td>
+                  <td>aUEC</td>
+                  <td></td>
+                  <td>aUEC</td>
+                  <td>aUEC</td>
                 </tr>
               </thead>
               <tbody>
@@ -278,6 +270,7 @@
     font-size: 40px;
   }
 
+  /* Stacked below 1100 px, two equal halves from 1100 px up. */
   .panels {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -285,9 +278,9 @@
     align-items: start;
   }
 
-  @media (min-width: 960px) {
+  @media (min-width: 1100px) {
     .panels {
-      grid-template-columns: minmax(0, 4fr) minmax(0, 7fr);
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
 
@@ -323,23 +316,6 @@
     text-transform: uppercase;
   }
 
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-  }
-
-  label,
-  legend {
-    color: var(--color-muted);
-    font-family: var(--font-heading);
-    font-weight: 600;
-    font-size: 14px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-
-  select,
   input[type="text"] {
     min-height: var(--touch);
     width: 100%;
@@ -351,7 +327,6 @@
     font: inherit;
   }
 
-  select:hover,
   input[type="text"]:hover {
     border-color: #4a5058;
   }
@@ -360,36 +335,44 @@
     border-color: #e5484d;
   }
 
-  option:disabled {
-    color: #6b7280;
-  }
-
   .lines {
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
-    margin: 0;
-    padding: 0;
-    border: 0;
-  }
-
-  .lines legend {
-    margin-bottom: var(--space-1);
-    padding: 0;
-  }
-
-  .line-inputs {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 128px var(--touch);
     gap: var(--space-2);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--color-border);
   }
 
-  .scu {
+  .line {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 140px var(--touch);
+    grid-template-areas: "name qty remove" "error error error";
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border);
+    background: var(--color-bg);
+  }
+
+  .line-name {
+    grid-area: name;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .material-name {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .qty {
+    grid-area: qty;
     position: relative;
   }
 
-  .scu input {
-    padding-right: 46px;
+  .qty input {
+    padding-right: 52px;
     font-family: var(--font-mono);
     font-weight: 500;
     text-align: right;
@@ -406,6 +389,7 @@
   }
 
   .remove {
+    grid-area: remove;
     min-height: var(--touch);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
@@ -420,25 +404,14 @@
     color: #ff8b8e;
   }
 
-  .field-error,
-  .bonus {
-    margin: var(--space-1) 0 0;
+  .field-error {
+    grid-area: error;
+    margin: 0;
+    color: #ff8b8e;
     font-size: 14px;
   }
 
-  .field-error {
-    color: #ff8b8e;
-  }
-
-  .bonus {
-    color: var(--color-ready);
-  }
-
-  .bonus.penalty {
-    color: var(--color-accent);
-  }
-
-  .add {
+  .clear {
     align-self: flex-start;
   }
 
@@ -496,11 +469,17 @@
     color: var(--color-muted);
   }
 
-  .provisional {
+  .provisional,
+  .note {
     margin: 0;
     padding: var(--space-3) var(--space-4);
     border: 1px solid var(--color-accent);
     color: var(--color-text);
+  }
+
+  .note {
+    border-color: var(--color-border);
+    border-left: 4px solid var(--color-ready);
   }
 
   .warning {
@@ -538,6 +517,8 @@
     color: var(--color-on-accent);
   }
 
+  /* Below 1100 px the table scrolls inside its box with a sticky method column;
+     from 1100 px it fits its half (short headers, wrapping names). */
   .table-wrap {
     overflow-x: auto;
     border: 1px solid var(--color-border);
@@ -546,18 +527,20 @@
   table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 15px;
+    font-size: 14px;
   }
 
   th,
   td {
-    padding: var(--space-2) var(--space-2);
+    padding: var(--space-2) 6px;
     border-bottom: 1px solid var(--color-border);
     text-align: right;
     white-space: nowrap;
   }
 
   thead th {
+    padding-bottom: 0;
+    border-bottom: 0;
     color: var(--color-muted);
     font-family: var(--font-heading);
     font-weight: 600;
@@ -567,12 +550,12 @@
     background: var(--color-panel);
   }
 
-  .unit-h {
-    display: block;
+  .units-row td {
+    padding-top: 0;
+    color: var(--color-muted);
     font-family: var(--font-mono);
-    font-weight: 500;
     font-size: 11px;
-    letter-spacing: 0.04em;
+    background: var(--color-panel);
   }
 
   .method-col {
@@ -581,6 +564,7 @@
     z-index: 1;
     width: 1%;
     min-width: 132px;
+    padding-left: var(--space-3);
     text-align: left;
     white-space: normal;
     background: var(--color-panel);
@@ -617,8 +601,6 @@
     font-family: var(--font-body);
     font-size: 15px;
     font-weight: 600;
-    letter-spacing: 0;
-    text-transform: none;
     cursor: pointer;
   }
 
@@ -696,6 +678,10 @@
       font-size: 32px;
     }
 
+    .line {
+      grid-template-columns: minmax(0, 1fr) 120px var(--touch);
+    }
+
     .method-col {
       min-width: 0;
       max-width: 140px;
@@ -703,10 +689,6 @@
 
     .method-col label {
       font-size: 14px;
-    }
-
-    .line-inputs {
-      grid-template-columns: minmax(0, 1fr) 110px var(--touch);
     }
   }
 </style>

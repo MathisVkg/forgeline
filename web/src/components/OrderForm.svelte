@@ -1,7 +1,12 @@
 <script>
   import { tick, untrack } from "svelte";
   import { endsAt, formatAuec, formatCountdown, formatDuration, formatEndTime, formatScu, parseDuration } from "@forgeline/shared";
-  import { groupMaterials, groupStations, stationLabel } from "../lib/calculator/logic.js";
+  import { bonusFor } from "../lib/calculator/logic.js";
+  import { bonusLabel, toggleMaterialLine } from "../lib/pickers.js";
+  import StationPicker from "./pickers/StationPicker.svelte";
+  import MethodPicker from "./pickers/MethodPicker.svelte";
+  import MaterialPicker from "./pickers/MaterialPicker.svelte";
+  import UnitToggle from "./pickers/UnitToggle.svelte";
   import {
     MAX_FORM_LINES,
     buildOrderInput,
@@ -53,8 +58,6 @@
   /** @type {Set<string>} */
   let touched = $state(new Set());
 
-  const stationGroups = $derived(groupStations(gameData.staticData));
-  const materialGroups = $derived(groupMaterials(gameData.staticData));
   const ctx = $derived({
     mode,
     staticData: gameData.staticData,
@@ -95,22 +98,26 @@
     touched = new Set();
   }
 
-  /** @param {"cscu" | "scu"} unit */
-  function setUnit(unit) {
-    if (unit === values.unit) return;
-    values.lines = convertLines($state.snapshot(values.lines), values.unit, unit);
-    values.unit = unit;
-    updateSettings({ quantityUnit: unit }).catch(() => {});
+  /** Unit toggle (shared setting): convert what was typed. @param {"cscu" | "scu"} from @param {"cscu" | "scu"} to */
+  function onUnitChange(from, to) {
+    values.lines = convertLines($state.snapshot(values.lines), from, to);
+    values.unit = to;
   }
 
-  function addLine() {
-    if (values.lines.length < MAX_FORM_LINES) values.lines.push(emptyFormLine(nextKey++));
+  /** Material picker: selecting adds a line, unselecting removes it. @param {string} materialId */
+  function toggleLine(materialId) {
+    values.lines = toggleMaterialLine(
+      $state.snapshot(values.lines),
+      materialId,
+      (id) => ({ ...emptyFormLine(nextKey++), materialId: id }),
+      MAX_FORM_LINES,
+    );
+    touch("materials");
   }
 
   /** @param {number} key */
   function removeLine(key) {
     values.lines = values.lines.filter((l) => l.key !== key);
-    if (values.lines.length === 0) values.lines = [emptyFormLine(nextKey++)];
   }
 
   async function startChangeTime() {
@@ -196,79 +203,51 @@
 {/if}
 
 <form novalidate onsubmit={submit}>
-  <div class="row two">
-    <div class="field">
-      <label for="f-station">Station</label>
-      <select
-        id="f-station"
-        bind:value={values.stationId}
-        onblur={() => touch("stationId")}
-        aria-invalid={err("stationId") ? "true" : undefined}
-        aria-describedby={described("stationId")}
-      >
-        <option value="">Choose a station…</option>
-        {#each stationGroups as group (group.system)}
-          <optgroup label={group.system}>
-            {#each group.stations as s (s.id)}
-              <option value={s.id}>{stationLabel(s)}</option>
-            {/each}
-          </optgroup>
-        {/each}
-      </select>
-      {#if err("stationId")}<p class="error" id="f-station-error">{err("stationId")}</p>{/if}
-    </div>
+  <StationPicker
+    bind:value={values.stationId}
+    stations={gameData.staticData?.stations}
+    id="f-station"
+    name="order-station"
+    error={err("stationId")}
+    onblur={() => touch("stationId")}
+  />
 
-    <div class="field">
-      <label for="f-method">Method</label>
-      <select
-        id="f-method"
-        bind:value={values.methodId}
-        onblur={() => touch("methodId")}
-        aria-invalid={err("methodId") ? "true" : undefined}
-        aria-describedby={described("methodId")}
-      >
-        <option value="">Choose a method…</option>
-        {#each gameData.staticData?.methods ?? [] as m (m.id)}
-          <option value={m.id}>{m.name}</option>
-        {/each}
-      </select>
-      {#if err("methodId")}<p class="error" id="f-method-error">{err("methodId")}</p>{/if}
-    </div>
-  </div>
+  <MethodPicker
+    bind:value={values.methodId}
+    methods={gameData.staticData?.methods}
+    id="f-method"
+    name="order-method"
+    error={err("methodId")}
+    onblur={() => touch("methodId")}
+  />
 
-  <fieldset class="materials">
-    <legend>Materials</legend>
-    <div class="unit-row">
-      <div class="units" role="group" aria-label="Quantity unit">
-        <button type="button" class="unit" aria-pressed={values.unit === "cscu"} onclick={() => setUnit("cscu")}>cSCU (as on terminal)</button>
-        <button type="button" class="unit" aria-pressed={values.unit === "scu"} onclick={() => setUnit("scu")}>SCU</button>
+  <div class="materials">
+    <MaterialPicker
+      selected={values.lines.map((l) => l.materialId)}
+      ontoggle={toggleLine}
+      materials={gameData.staticData?.materials}
+      bonuses={gameData.staticData?.bonuses}
+      stationId={values.stationId}
+      max={MAX_FORM_LINES}
+      id="f-mat-search"
+      error={err("materials")}
+    />
+
+    {#if values.lines.length}
+      <div class="unit-row">
+        <UnitToggle onchange={onUnitChange} />
+        <p class="hint">Copy the YIELD column to track your real output.</p>
       </div>
-      <p class="hint">Copy the YIELD column to track your real output.</p>
-    </div>
-    {#if err("materials")}<p class="error" id="f-mat-0-error">{err("materials")}</p>{/if}
+    {/if}
 
     {#each values.lines as line, i (line.key)}
-      {@const used = new Set(values.lines.filter((l) => l.key !== line.key && l.materialId).map((l) => l.materialId))}
       {@const lineErrors = ["material", "qty", "yield", "quality"].map((f) => err(`materials.${i}.${f}`)).filter(Boolean)}
+      {@const bonus = bonusLabel(bonusFor(gameData.staticData, values.stationId, line.materialId))}
+      {@const name = gameData.materialName(line.materialId)}
       <div class="line" class:more={showMore}>
-        <div class="field material">
-          <label for="f-mat-{i}">Material{values.lines.length > 1 ? ` ${i + 1}` : ""}</label>
-          <select
-            id="f-mat-{i}"
-            bind:value={line.materialId}
-            onblur={() => touch(`materials.${i}.material`)}
-            aria-invalid={err(`materials.${i}.material`) ? "true" : undefined}
-            aria-describedby={lineErrors.length ? `f-line-${i}-error` : undefined}
-          >
-            <option value="">Choose…</option>
-            {#each materialGroups as group (group.label)}
-              <optgroup label={group.label}>
-                {#each group.items as m (m.id)}
-                  <option value={m.id} disabled={used.has(m.id)}>{m.name}</option>
-                {/each}
-              </optgroup>
-            {/each}
-          </select>
+        <div class="line-name">
+          <span class="material-name">{name}</span>
+          {#if bonus}<span class="bonus-tag {bonus.tone}">{bonus.text} yield at this station</span>{/if}
         </div>
         <div class="field qty">
           <label for="f-qty-{i}">Qty <span class="unit-tag">{unitLabel}</span></label>
@@ -280,7 +259,7 @@
             placeholder={values.unit === "cscu" ? "43200" : "432"}
             bind:value={line.qtyText}
             onblur={() => touch(`materials.${i}.qty`)}
-            aria-invalid={err(`materials.${i}.qty`) ? "true" : undefined}
+            aria-invalid={err(`materials.${i}.qty`) || err(`materials.${i}.material`) ? "true" : undefined}
             aria-describedby={lineErrors.length ? `f-line-${i}-error` : undefined}
           />
         </div>
@@ -313,14 +292,13 @@
             />
           </div>
         {/if}
-        <button type="button" class="remove" aria-label="Remove material {i + 1}" onclick={() => removeLine(line.key)}>×</button>
+        <button type="button" class="remove" aria-label="Remove {name}" onclick={() => removeLine(line.key)}>×</button>
         {#if lineErrors.length}
           <p class="error line-error" id="f-line-{i}-error">{lineErrors.join(" ")}</p>
         {/if}
       </div>
     {/each}
-    <button type="button" class="btn add" disabled={values.lines.length >= MAX_FORM_LINES} onclick={addLine}>+ Add material</button>
-  </fieldset>
+  </div>
 
   <div class="row two">
     <div class="field">
@@ -430,15 +408,13 @@
     gap: var(--space-4);
   }
 
-  .modes,
-  .units {
+  .modes {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
   }
 
-  .mode,
-  .unit {
+  .mode {
     min-height: var(--touch);
     padding: 0 var(--space-4);
     border: 1px solid var(--color-border);
@@ -449,13 +425,7 @@
     cursor: pointer;
   }
 
-  .unit {
-    background: transparent;
-    font-size: 15px;
-  }
-
-  .mode[aria-pressed="true"],
-  .unit[aria-pressed="true"] {
+  .mode[aria-pressed="true"] {
     background: var(--color-accent);
     border-color: var(--color-accent);
     color: var(--color-on-accent);
@@ -516,7 +486,6 @@
   }
 
   label,
-  legend,
   dt,
   .label {
     color: var(--color-muted);
@@ -537,7 +506,6 @@
     text-transform: none;
   }
 
-  select,
   input[type="text"] {
     min-height: var(--touch);
     width: 100%;
@@ -584,14 +552,6 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
-    margin: 0;
-    padding: var(--space-4);
-    border: 1px solid var(--color-border);
-    background: var(--color-panel);
-  }
-
-  .materials legend {
-    padding: 0 var(--space-2);
   }
 
   .unit-row {
@@ -600,43 +560,59 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-2) var(--space-4);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--color-border);
   }
 
+  /* One line per selected material: name + bonus, Qty, Yield, (Quality), × */
   .line {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--touch);
     grid-template-areas:
-      "material material material"
-      "qty yield remove"
+      "name name remove"
+      "qty yield yield"
       "error error error";
     gap: var(--space-2);
-    padding-bottom: var(--space-3);
-    border-bottom: 1px solid var(--color-border);
+    padding: var(--space-3);
+    border: 1px solid var(--color-border);
+    background: var(--color-panel);
   }
 
   .line.more {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.7fr) var(--touch);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.8fr) var(--touch);
     grid-template-areas:
-      "material material material material"
-      "qty yield quality remove"
+      "name name name remove"
+      "qty yield quality quality"
       "error error error error";
   }
 
   @media (min-width: 640px) {
     .line {
       grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) var(--touch);
-      grid-template-areas: "material qty yield remove" "error error error error";
+      grid-template-areas: "name qty yield remove" "error error error error";
+      align-items: end;
     }
 
     .line.more {
       grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.7fr) var(--touch);
-      grid-template-areas: "material qty yield quality remove" "error error error error error";
+      grid-template-areas: "name qty yield quality remove" "error error error error error";
     }
   }
 
-  .material {
-    grid-area: material;
+  .line-name {
+    grid-area: name;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: var(--touch);
+    min-width: 0;
   }
+
+  .material-name {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
   .qty {
     grid-area: qty;
   }
@@ -665,10 +641,6 @@
   .remove:hover {
     border-color: #e5484d;
     color: #ff8b8e;
-  }
-
-  .add {
-    align-self: flex-start;
   }
 
   .time-row {

@@ -36,7 +36,6 @@
 </script>
 
 <dialog bind:this={dialog} aria-labelledby="ready-title" onclose={() => (open = false)}>
-  <div class="bar" aria-hidden="true"></div>
   <div class="content">
     <p class="eyebrow ready-label">Since your last visit</p>
     <h2 id="ready-title">
@@ -66,10 +65,11 @@
 
 <style>
   dialog {
-    width: min(520px, calc(100vw - 32px));
+    width: min(560px, calc(100vw - 32px));
     max-height: calc(100vh - 64px);
     padding: 0;
     border: 1px solid color-mix(in srgb, var(--color-ready) 45%, var(--color-border));
+    border-top: 4px solid var(--color-ready);
     background: var(--color-panel);
     color: var(--color-text);
   }
@@ -78,25 +78,24 @@
     background: rgb(8 9 11 / 0.75);
   }
 
-  .bar {
-    height: 6px;
-    background: repeating-linear-gradient(-45deg, var(--color-ready) 0 12px, var(--color-panel) 12px 24px);
-  }
-
   .content {
-    padding: var(--space-6);
+    padding: var(--space-8);
   }
 
   .ready-label {
+    margin: 0 0 var(--space-2);
     color: var(--color-ready);
   }
 
   h2 {
-    margin: 0 0 var(--space-4);
+    margin: 0 0 var(--space-6);
     font-size: 28px;
   }
 
   ul {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
     margin: 0;
     padding: 0;
     list-style: none;
@@ -107,14 +106,16 @@
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-2) var(--space-3);
-    padding: var(--space-3) 0;
-    border-top: 1px solid var(--color-border);
+    gap: var(--space-3) var(--space-4);
+    padding: 18px 20px;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
   }
 
   .info {
     display: flex;
     flex-direction: column;
+    gap: var(--space-1);
     min-width: 0;
   }
 
@@ -137,8 +138,16 @@
   .footer {
     display: flex;
     justify-content: flex-end;
-    margin-top: var(--space-4);
-    padding-top: var(--space-4);
-    border-top: 1px solid var(--color-border);
+    margin-top: var(--space-6);
+  }
+
+  @media (max-width: 480px) {
+    .content {
+      padding: 20px;
+    }
+
+    li {
+      padding: var(--space-4);
+    }
   }
 </style>

@@ -4,6 +4,7 @@
   import { router } from "./lib/router.svelte.js";
   import { init as initOrders, ordersState } from "./lib/stores/orders.svelte.js";
   import { init as initGameData } from "./lib/stores/gameData.svelte.js";
+  import { initPrefs } from "./lib/stores/prefs.svelte.js";
   import { tabTitle } from "./lib/orders/view.js";
   import ReadyDialog from "./components/ReadyDialog.svelte";
   import Toast from "./components/Toast.svelte";
@@ -18,16 +19,18 @@
   const links = [
     { route: "orders", label: "Orders" },
     { route: "calculator", label: "Calculator" },
-    { route: "new", label: "+ New order" },
     { route: "settings", label: "Settings" },
   ];
 
   const Page = $derived(pages[router.route]);
+  // The New order page (new, edit, from estimate) belongs to Orders.
+  const activeNav = $derived(router.route === "new" ? "orders" : router.route);
 
   // Load game data (/data/*.json) and orders (IndexedDB) in parallel.
   onMount(() => {
     initGameData();
     initOrders();
+    initPrefs();
   });
 
   // "(2) Forgeline" while orders are ready.
@@ -35,8 +38,6 @@
     document.title = tabTitle(ordersState.readyOrders.length, APP_NAME);
   });
 </script>
-
-<div class="hazard" aria-hidden="true"></div>
 
 <header class="header">
   <div class="inner">
@@ -50,8 +51,8 @@
           <li>
             <a
               href="#/{link.route}"
-              class:active={router.route === link.route}
-              aria-current={router.route === link.route ? "page" : undefined}>{link.label}</a
+              class:active={activeNav === link.route}
+              aria-current={activeNav === link.route ? "page" : undefined}>{link.label}</a
             >
           </li>
         {/each}
@@ -83,17 +84,17 @@
     flex-direction: column;
   }
 
-  .hazard {
-    height: 6px;
-    flex: none;
-    background: repeating-linear-gradient(-45deg, var(--color-accent) 0 12px, var(--color-bg) 12px 24px);
-  }
-
   .inner {
     width: 100%;
     max-width: var(--content-width);
     margin: 0 auto;
     padding: 0 var(--space-4);
+  }
+
+  @media (min-width: 960px) {
+    .inner {
+      padding: 0 var(--space-8);
+    }
   }
 
   .header {

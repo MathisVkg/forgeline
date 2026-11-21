@@ -21,8 +21,11 @@
 
 <section class="page" aria-labelledby="orders-title">
   <header class="head">
-    <p class="eyebrow">Work orders</p>
-    <h1 id="orders-title">Refinery orders</h1>
+    <div>
+      <p class="eyebrow">Work orders</p>
+      <h1 id="orders-title">Refinery orders</h1>
+    </div>
+    <a class="btn btn-primary new-order" href="#/new">+ New order</a>
   </header>
 
   {#if ordersState.error}
@@ -116,9 +119,25 @@
     gap: var(--space-6);
   }
 
+  .head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--space-3) var(--space-4);
+  }
+
   .head h1 {
     margin: 0;
     font-size: 40px;
+  }
+
+  /* Phones: the "+ New order" button goes under the title. */
+  @media (max-width: 639px) {
+    .head {
+      flex-direction: column;
+      align-items: flex-start;
+    }
   }
 
   .tiles {
@@ -220,7 +239,7 @@
   /* Equal columns; a lone card on the last row keeps the same width. */
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
     gap: var(--space-4);
   }
 

@@ -1,7 +1,8 @@
 // @ts-check
 // Pure calculator logic (testable in Node without Svelte).
-import { estimate, scuToCScu } from "@forgeline/shared";
+import { estimate } from "@forgeline/shared";
 import { snapshotFromEstimate } from "../storage/model.js";
+import { convertText, formatQuantity, parseQuantity } from "../quantity.js";
 
 export const MAX_CALC_LINES = 20;
 export const DRAFT_ROUTE = "#/new?from=estimate";
@@ -10,7 +11,8 @@ const SYSTEM_ORDER = ["Stanton", "Pyro", "Nyx"];
 /**
  * @typedef {import("../stores/gameData.svelte.js").StaticData} StaticData
  * @typedef {import("../stores/gameData.svelte.js").Prices} Prices
- * @typedef {{ key: number, materialId: string, scuText: string }} CalcLine
+ * @typedef {import("../quantity.js").QuantityUnit} QuantityUnit
+ * @typedef {{ key: number, materialId: string, qtyText: string }} CalcLine
  * @typedef {"net" | "perHour"} SortBy
  * @typedef {{ stationId: string, lines: CalcLine[], sortBy: SortBy, selectedMethodId: string | null }} CalcInputs
  * @typedef {CalcLine & { cScu: number | null, error: string | null, blank: boolean }} ParsedLine
@@ -20,32 +22,32 @@ const SYSTEM_ORDER = ["Stanton", "Pyro", "Nyx"];
 
 /**
  * @param {number} key
+ * @param {string} [materialId]
  * @returns {CalcLine}
  */
-export const emptyLine = (key) => ({ key, materialId: "", scuText: "" });
+export const emptyLine = (key, materialId = "") => ({ key, materialId, qtyText: "" });
 
 /**
- * Parses quantities and flags duplicates. A completely blank line (no
- * material, no quantity) is ignored, not an error.
+ * Parses quantities (in the shared unit) and flags duplicates. A completely
+ * blank line (no material, no quantity) is ignored, not an error.
  * @param {CalcLine[]} lines
+ * @param {QuantityUnit} [unit]
  * @returns {ParsedLine[]}
  */
-export function parseLines(lines) {
+export function parseLines(lines, unit = "cscu") {
   const seen = new Set();
   return lines.map((line) => {
-    const text = line.scuText.trim();
+    const text = line.qtyText.trim();
     const blank = !line.materialId && !text;
     /** @type {number | null} */
     let cScu = null;
     /** @type {string | null} */
     let error = null;
     if (text) {
-      try {
-        cScu = scuToCScu(text);
-        if (cScu === 0) error = "Enter more than 0 SCU.";
-      } catch (err) {
-        error = err instanceof Error ? `${err.message}.`.replace(/\.\.$/, ".") : "Enter a quantity in SCU.";
-      }
+      const parsed = parseQuantity(text, unit);
+      if (parsed.error) error = parsed.error;
+      else if (parsed.value === 0) error = `Enter more than 0 ${unit === "cscu" ? "cSCU" : "SCU"}.`;
+      else cScu = parsed.value;
     }
     if (line.materialId && seen.has(line.materialId)) error = "This material is already in another line.";
     if (line.materialId) seen.add(line.materialId);
@@ -54,7 +56,7 @@ export function parseLines(lines) {
 }
 
 /**
- * Material ids used in other lines (to disable them in this line's select).
+ * Material ids used in other lines.
  * @param {CalcLine[]} lines
  * @param {number} key this line
  */
@@ -63,30 +65,54 @@ export function usedElsewhere(lines, key) {
 }
 
 /**
- * Restores stored inputs, dropping ids that no longer exist in static data.
+ * What goes to sessionStorage: quantities as cSCU (unit-independent), plus
+ * the typed text when it doesn't parse.
+ * @param {CalcInputs} inputs
+ * @param {QuantityUnit} unit unit of the typed text
+ */
+export function serializeInputs(inputs, unit) {
+  return {
+    stationId: inputs.stationId,
+    lines: inputs.lines.map((l) => {
+      const { value, error } = parseQuantity(l.qtyText, unit);
+      return error || value === null ? { materialId: l.materialId, cScu: null, text: l.qtyText } : { materialId: l.materialId, cScu: value };
+    }),
+    sortBy: inputs.sortBy,
+    selectedMethodId: inputs.selectedMethodId,
+  };
+}
+
+/**
+ * Restores stored inputs in the current unit, dropping ids that no longer
+ * exist in static data. Reads the Task 7 format (scuText) too.
  * @param {unknown} raw
  * @param {StaticData | null} staticData
+ * @param {QuantityUnit} [unit]
  * @returns {CalcInputs}
  */
-export function restoreInputs(raw, staticData) {
+export function restoreInputs(raw, staticData, unit = "cscu") {
   /** @type {any} */
   const s = typeof raw === "object" && raw !== null ? raw : {};
   const stations = new Set(staticData?.stations.map((x) => x.id) ?? []);
   const materials = new Set(staticData?.materials.map((x) => x.id) ?? []);
   const methods = new Set(staticData?.methods.map((x) => x.id) ?? []);
+  /** @param {any} l */
+  const text = (l) => {
+    if (Number.isInteger(l.cScu) && l.cScu >= 0) return formatQuantity(l.cScu, unit);
+    if (typeof l.text === "string") return l.text.slice(0, 20);
+    if (typeof l.scuText === "string") return convertText(l.scuText.slice(0, 20), "scu", unit);
+    return "";
+  };
+  const seen = new Set();
   /** @type {CalcLine[]} */
   const lines = (Array.isArray(s.lines) ? s.lines : [])
-    .filter((/** @type {any} */ l) => l && typeof l === "object")
-    .map((/** @type {any} */ l, /** @type {number} */ i) => ({
-      key: i + 1,
-      materialId: typeof l.materialId === "string" && materials.has(l.materialId) ? l.materialId : "",
-      scuText: typeof l.scuText === "string" ? l.scuText.slice(0, 20) : "",
-    }))
-    .filter((/** @type {CalcLine} */ l) => l.materialId || l.scuText)
-    .slice(0, MAX_CALC_LINES);
+    .filter((/** @type {any} */ l) => l && typeof l === "object" && typeof l.materialId === "string" && materials.has(l.materialId))
+    .filter((/** @type {any} */ l) => !seen.has(l.materialId) && seen.add(l.materialId))
+    .slice(0, MAX_CALC_LINES)
+    .map((/** @type {any} */ l, /** @type {number} */ i) => ({ key: i + 1, materialId: l.materialId, qtyText: text(l) }));
   return {
     stationId: typeof s.stationId === "string" && stations.has(s.stationId) ? s.stationId : "",
-    lines: lines.length ? lines : [emptyLine(1)],
+    lines,
     sortBy: s.sortBy === "perHour" ? "perHour" : "net",
     selectedMethodId: typeof s.selectedMethodId === "string" && methods.has(s.selectedMethodId) ? s.selectedMethodId : null,
   };

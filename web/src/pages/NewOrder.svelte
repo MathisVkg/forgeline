@@ -25,6 +25,7 @@
 </script>
 
 <section class="page" aria-labelledby="new-title">
+  <a class="back" href="#/orders">← Back to orders</a>
   <header class="head">
     <p class="eyebrow">{editId ? "Work order" : "Quick entry"}</p>
     <h1 id="new-title">{editId ? "Edit order" : "New order"}</h1>
@@ -54,12 +55,27 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-6);
-    max-width: 880px;
+    max-width: 960px;
   }
 
   .head h1 {
     margin: 0;
     font-size: 40px;
+  }
+
+  .back {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--touch);
+    margin-bottom: calc(-1 * var(--space-4));
+    color: var(--color-accent);
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .back:hover {
+    text-decoration: underline;
   }
 
   .lead {

@@ -1,9 +1,13 @@
 // @ts-check
 // Calculator state (Svelte 5 runes). Inputs persist in sessionStorage
-// ("forgeline.calculator") so a reload or a trip to the form keeps them.
-import { baselineFor, blendParams, ownSamplesFromOrders } from "@forgeline/shared";
+// ("forgeline.calculator", quantities as cSCU) so a reload or a trip to the
+// form keeps them. Quantities are typed in the shared unit (prefs).
+import { baselineFor, blendParams, ownSamplesFromOrders, samplesForLoad } from "@forgeline/shared";
 import { gameData } from "../stores/gameData.svelte.js";
 import { ordersState } from "../stores/orders.svelte.js";
+import { prefs } from "../stores/prefs.svelte.js";
+import { convertText } from "../quantity.js";
+import { toggleMaterialLine } from "../pickers.js";
 import {
   MAX_CALC_LINES,
   allLowConfidence,
@@ -13,6 +17,7 @@ import {
   emptyLine,
   parseLines,
   restoreInputs,
+  serializeInputs,
   sortMethods,
 } from "./logic.js";
 
@@ -20,6 +25,7 @@ export const STORAGE_KEY = "forgeline.calculator";
 
 /** @typedef {import("./logic.js").CalcLine} CalcLine */
 /** @typedef {import("./logic.js").SortBy} SortBy */
+/** @typedef {import("../quantity.js").QuantityUnit} QuantityUnit */
 
 /** @returns {unknown} */
 function readStored() {
@@ -34,24 +40,29 @@ function readStored() {
 class CalculatorState {
   stationId = $state("");
   /** @type {CalcLine[]} */
-  lines = $state([emptyLine(1)]);
+  lines = $state([]);
   /** @type {SortBy} */
   sortBy = $state("net");
   /** @type {string | null} */
   selectedMethodId = $state(null);
+  /** Unit the line texts are typed in (follows prefs.quantityUnit). */
+  /** @type {QuantityUnit} */
+  unit = $state("cscu");
   /** True once stored inputs were checked against static data. */
   restored = $state(false);
-  #nextKey = 2;
+  #nextKey = 1;
 
-  parsed = $derived(parseLines(this.lines));
-  ownSamples = $derived(ownSamplesFromOrders(ordersState.orders, gameData.staticData));
-  ownCount = $derived(this.ownSamples.filter((s) => s.patch === gameData.staticData?.patch).length);
+  parsed = $derived(parseLines(this.lines, this.unit));
+  allOwnSamples = $derived(ownSamplesFromOrders(ordersState.orders, gameData.staticData));
+  /** Own samples of the load's material kind only; a mixed load uses none. */
+  load = $derived(samplesForLoad(this.allOwnSamples, this.lines.map((l) => l.materialId), gameData.staticData));
+  ownCount = $derived(this.load.samples.filter((s) => s.patch === gameData.staticData?.patch).length);
   params = $derived(
     gameData.staticData
       ? blendParams({
           baseline: baselineFor(gameData.staticData.methods.map((m) => m.id)),
           aggregates: gameData.aggregates,
-          ownSamples: this.ownSamples,
+          ownSamples: this.load.samples,
           patch: gameData.staticData.patch ?? "",
         })
       : null,
@@ -73,27 +84,35 @@ class CalculatorState {
   provisional = $derived(allLowConfidence(this.params));
   totalRawCScu = $derived(this.parsed.reduce((sum, l) => sum + (l.cScu ?? 0), 0));
 
-  addLine() {
-    if (this.lines.length >= MAX_CALC_LINES) return;
-    this.lines.push(emptyLine(this.#nextKey++));
+  /** Material picker: add a line, or remove it when selected again. @param {string} materialId */
+  toggleMaterial(materialId) {
+    this.lines = toggleMaterialLine($state.snapshot(this.lines), materialId, (id) => emptyLine(this.#nextKey++, id), MAX_CALC_LINES);
   }
 
   /** @param {number} key */
   removeLine(key) {
     this.lines = this.lines.filter((l) => l.key !== key);
-    if (this.lines.length === 0) this.lines = [emptyLine(this.#nextKey++)];
   }
 
   clear() {
     this.stationId = "";
-    this.lines = [emptyLine(this.#nextKey++)];
+    this.lines = [];
     this.selectedMethodId = null;
   }
 
-  /** Restores sessionStorage inputs once static data is known. */
+  /** Re-expresses typed quantities when the shared unit changes. @param {QuantityUnit} unit */
+  setUnit(unit) {
+    if (unit === this.unit) return;
+    const from = this.unit;
+    this.lines = this.lines.map((l) => ({ ...l, qtyText: convertText(l.qtyText, from, unit) }));
+    this.unit = unit;
+  }
+
+  /** Restores sessionStorage inputs once static data and prefs are known. */
   restore() {
-    if (this.restored || !gameData.staticData) return;
-    const inputs = restoreInputs(readStored(), gameData.staticData);
+    if (this.restored || !gameData.staticData || !prefs.loaded) return;
+    this.unit = prefs.quantityUnit;
+    const inputs = restoreInputs(readStored(), gameData.staticData, this.unit);
     this.stationId = inputs.stationId;
     this.lines = inputs.lines;
     this.sortBy = inputs.sortBy;
@@ -104,15 +123,8 @@ class CalculatorState {
 
   save() {
     try {
-      sessionStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({
-          stationId: this.stationId,
-          lines: this.lines.map((l) => ({ materialId: l.materialId, scuText: l.scuText })),
-          sortBy: this.sortBy,
-          selectedMethodId: this.selectedMethodId,
-        }),
-      );
+      const inputs = { stationId: this.stationId, lines: this.lines, sortBy: this.sortBy, selectedMethodId: this.selectedMethodId };
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(serializeInputs(inputs, this.unit)));
     } catch {
       // storage blocked or full: inputs just aren't kept
     }

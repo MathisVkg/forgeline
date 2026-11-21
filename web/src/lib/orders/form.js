@@ -1,7 +1,8 @@
 // @ts-check
 // New/edit order form logic (pure): text inputs as typed at the refinery
 // terminal -> order input for the storage layer, and back.
-import { parseAuec, parseDuration, scuToCScu } from "@forgeline/shared";
+import { parseAuec, parseDuration } from "@forgeline/shared";
+import { convertText, formatQuantity, parseQuantity } from "../quantity.js";
 import { MAX_LINES, MAX_PERCENT_FIELD, TITLE_MAX, validateOrderInput } from "../storage/model.js";
 
 /**
@@ -37,10 +38,11 @@ const isBlankLine = (l) => !l.materialId && !l.qtyText.trim() && !l.yieldText.tr
  * @param {string} key
  */
 export function fieldId(key) {
+  // Lines come from the material picker, so a line's "material" error focuses its quantity.
   const line = /^materials\.(\d+)\.(material|qty|yield|quality)$/.exec(key);
-  if (line) return `f-${line[2] === "material" ? "mat" : line[2]}-${line[1]}`;
+  if (line) return `f-${line[2] === "material" ? "qty" : line[2]}-${line[1]}`;
   /** @type {Record<string, string>} */
-  const ids = { stationId: "f-station", methodId: "f-method", materials: "f-mat-0", costAuec: "f-cost", durationSec: "f-time", title: "f-title", capacityPct: "f-capacity" };
+  const ids = { stationId: "f-station", methodId: "f-method", materials: "f-mat-search", costAuec: "f-cost", durationSec: "f-time", title: "f-title", capacityPct: "f-capacity" };
   return ids[key] ?? "f-station";
 }
 
@@ -56,35 +58,7 @@ export function orderedErrorKeys(errors, lineCount) {
   return order.filter((k) => errors[k]);
 }
 
-/**
- * Quantity text -> cSCU. cSCU mode takes whole numbers like the terminal
- * ("43200", "43,200"); SCU mode takes "432", "12.5" or "12,5".
- * @param {string} text
- * @param {QuantityUnit} unit
- * @returns {{ value: number | null, error: string | null }}
- */
-export function parseQuantity(text, unit) {
-  const t = text.trim().replace(/[\s  ]/g, "");
-  if (!t) return { value: null, error: null };
-  if (unit === "cscu") {
-    const digits = /^\d{1,3}(,\d{3})+$/.test(t) ? t.replace(/,/g, "") : t;
-    if (!/^\d+$/.test(digits)) return { value: null, error: "Enter whole cSCU as on the terminal, like 43200 (or switch to SCU)." };
-    return { value: Number(digits), error: null };
-  }
-  try {
-    return { value: scuToCScu(t), error: null };
-  } catch (err) {
-    return { value: null, error: `${err instanceof Error ? err.message : "Enter a quantity in SCU"}.` };
-  }
-}
-
-/**
- * @param {number} cScu
- * @param {QuantityUnit} unit
- */
-export function formatQuantity(cScu, unit) {
-  return unit === "cscu" ? String(cScu) : String(cScu / 100);
-}
+export { parseQuantity, formatQuantity } from "../quantity.js";
 
 /**
  * Re-expresses typed quantities in another unit (unparseable text is kept).
@@ -95,12 +69,7 @@ export function formatQuantity(cScu, unit) {
  */
 export function convertLines(lines, from, to) {
   if (from === to) return lines;
-  /** @param {string} text */
-  const convert = (text) => {
-    const { value, error } = parseQuantity(text, from);
-    return value === null || error ? text : formatQuantity(value, to);
-  };
-  return lines.map((l) => ({ ...l, qtyText: convert(l.qtyText), yieldText: convert(l.yieldText) }));
+  return lines.map((l) => ({ ...l, qtyText: convertText(l.qtyText, from, to), yieldText: convertText(l.yieldText, from, to) }));
 }
 
 /**
@@ -147,7 +116,8 @@ export function emptyValues(settings, staticData) {
   return {
     stationId: known(staticData, "stations", settings.lastStationId),
     methodId: known(staticData, "methods", settings.lastMethodId),
-    lines: [emptyFormLine(1)],
+    // lines are added by the material picker
+    lines: [],
     unit: settings.quantityUnit,
     costText: "",
     timeText: "",
@@ -218,8 +188,8 @@ function parseSmallInt(text, label) {
  * @param {string} message
  */
 function lineErrorField(message) {
+  if (/^yield|refined/i.test(message)) return "yield";
   if (/quantity/i.test(message)) return "qty";
-  if (/refined/i.test(message)) return "yield";
   if (/quality/i.test(message)) return "quality";
   return "material";
 }
