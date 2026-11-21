@@ -183,7 +183,7 @@
 
         <div class="source-row">
           <p class="source">
-            {calc.source.text}{#if pricesAt}{" · "}Prices from {formatAge(pricesAt, ordersState.nowMs)}{/if}
+            {#if calc.source.text}<span data-testid="calc-source">{calc.source.text}</span>{/if}{#if calc.source.text && pricesAt}{" · "}{/if}{#if pricesAt}Prices from {formatAge(pricesAt, ordersState.nowMs)}{/if}
           </p>
           {#if result}
             <div class="sort" role="group" aria-label="Sort methods">
@@ -195,12 +195,8 @@
           {/if}
         </div>
 
-        {#if calc.load.mixed}
-          <p class="note">This load mixes ores and salvage, so your own orders are not used for it: baseline estimates only.</p>
-        {/if}
-
         {#if calc.provisional}
-          <p class="provisional">Costs and times are early estimates. They improve as players share real terminal quotes.</p>
+          <p class="provisional" data-testid="calc-provisional">Some values are assumptions (est.). Save a terminal quote for this material to make them exact.</p>
         {/if}
 
         {#if !result}
@@ -252,7 +248,7 @@
                         />
                         <span class="method-name">{m.name}</span>
                         {#if m.params.lowConfidence}
-                          <span class="approx" title="Early estimate: fewer than 5 real quotes" aria-hidden="true">~</span>
+                          <span class="approx" title="Estimate: uses assumed values for a material" aria-hidden="true">~</span>
                           <span class="sr-only">(early estimate)</span>
                         {/if}
                         {#if m.methodId === result.bestNet}<span class="tag tag-net">Best net</span>{/if}
@@ -560,18 +556,12 @@
     font-size: 15px;
   }
 
-  .provisional,
-  .note {
+  .provisional {
     margin: 0;
     padding: 6px var(--space-3);
     border: 1px solid var(--color-accent);
     color: var(--color-text);
     font-size: 14px;
-  }
-
-  .note {
-    border-color: var(--color-border);
-    border-left: 4px solid var(--color-ready);
   }
 
   .warning {

@@ -227,68 +227,88 @@ Tabs stay in sync through `BroadcastChannel("forgeline")`: every write posts `{ 
 
 Quantities are integers in **cSCU** (1/100 SCU). Money in whole aUEC. Time in seconds.
 
-### 5.1 Parameters per method
+### 5.1 Game model: method tiers and material base values
 
-For each method `m`:
-- `y[m]` yield ratio
-- `c[m]` cost per raw SCU (aUEC)
-- `T0[m]` base time (s), `k[m]` seconds per raw SCU
+The refinery terminal places every method on fixed tiers. They are stored in `shared/game-model.js` (`METHOD_TIERS`) and are the source of truth over the UEX 1–3 ratings:
+
+| Method id | Yield tier | Cost tier | Time × | Terminal text |
+|---|---|---|---|---|
+| xcr-reaction | low | high | 1 | Low yield · High cost · Fastest |
+| cormack | low | moderate | 2 | Low yield · Moderate cost · Very fast |
+| gaskin-process | moderate | high | 4 | Moderate yield · High cost · Fast |
+| kazen-winnowing | low | low | 6 | Low yield · Low cost · Slightly slow |
+| electrostarolysis | moderate | moderate | 8 | Moderate yield · Moderate cost · Moderate speed |
+| pyrometric-chromalysis | high | high | 16 | High yield · High cost · Slightly fast |
+| thermonatic-deposition | moderate | low | 24 | Moderate yield · Low cost · Slow |
+| ferron-exchange | high | moderate | 32 | High yield · Moderate cost · Very slow |
+| dinyx-solventation | high | low | 96 | High yield · Low cost · Slowest |
+
+Multipliers: `YIELD_MULT = { high: 1, moderate: 0.85, low: 0.7 }`, `COST_MULT = { low: 1, moderate: 2, high: 6 }`.
+
+A method in `static-data.json` without a row: the tests fail (add the row); at runtime it uses moderate / moderate / ×8 and is flagged `unknownMethod` (shown as an estimate).
+
+Every material `i` has three base values (`MATERIAL_DEFAULTS`, data only):
+- `maxYield[i]`: refined / raw at the high yield tier, before station bonus
+- `costPerScu[i]`: aUEC per raw SCU at cost ×1
+- `timePerScu[i]`: seconds per raw SCU at time ×1
+
+| Material | maxYield | costPerScu | timePerScu | Source |
+|---|---|---|---|---|
+| construction-pieces | 0.20 | 7.99981 | 3.75 | game quote (4.10.3, MIC-L2, capacity 336 %, 9 methods) |
+| other salvage | 0.20 | 7.99981 | 3.75 | assumed |
+| ores and gems | 0.90 | 8.0 | 3.75 | assumed |
 
 Station bonus `b[s, i]` in percent for station `s` and material `i` (0 if none).
 
 ### 5.2 Formulas
 
+For method `m` with tiers (`yt`, `ct`, `tm`):
+
 ```
-refined_i  = round(raw_i × y[m] × (1 + b[s,i] / 100))
-cost       = round(totalRawScu × c[m])
-time       = T0[m] + totalRawScu × k[m]
+refined_i  = round(raw_i × maxYield[i] × YIELD_MULT[yt] × (1 + b[s,i] / 100))   (cSCU, per line)
+cost       = floor(Σ rawScu_i × costPerScu[i] × COST_MULT[ct])                  (rounded down once)
+time       = round(Σ rawScu_i × timePerScu[i] × tm)                             (seconds)
 revenue    = Σ refined_i/100 × price.refined[i].avg
 net        = revenue − cost
 perHour    = net / (time / 3600)
 sellRaw    = Σ raw_i/100 × price.raw[i].avg
 ```
 
-The calculator computes this for all methods. It tags **Best net** and **Best per hour**, and shows **Sell raw** as a comparison. Materials with no price are listed but excluded from revenue, with a warning.
+The rounding rules come from the 9 terminal quotes: yields are exact, every time is an exact multiple of 27 min for 432 SCU, and only rounding the cost down reproduces all three cost tiers (3,455 / 6,911 / 20,735 aUEC). `refined_i` is rounded per line, cost and time once over the load.
 
-Open questions, answered by data in later tasks: the game's rounding rule, and whether cost or time depend on the material. If quotes show a material effect, add a per-material factor.
+The calculator computes this for all methods. It tags **Best net** and **Best per hour** (ties go to the faster method), and shows **Sell raw** as a comparison. Materials with no price are listed but excluded from revenue, with a warning.
 
-### 5.3 Where parameters come from (blending)
+Open question: whether refinery capacity (`capacityPct`) changes cost or time. Quotes keep it so it can be checked.
 
-Each parameter `p` combines three sources:
+### 5.3 Where the base values come from (calibration)
+
+The game is deterministic, so a real quote replaces a guess; there is no weighting. Per material and per value, the first available source wins:
+
+1. **own:** the user's saved orders from the current patch with a terminal quote (refined quantity on every line).
+2. **shared:** `aggregates.json`, current patch only, read per material: `materials[id] = { maxYield, costPerScu, timePerScu }`, each `{ median, n }` (Task 12 moves §3.3 to this format; the per-method `methods` object is not read).
+3. **default:** `MATERIAL_DEFAULTS` (source `game-quote` or `assumed`).
+
+Back-solving a quote through the tier model (`shared/calibrate.js`):
 
 ```
-p = (K × baseline + n_shared × median_shared + 2 × n_own × median_own) / (K + n_shared + 2 × n_own)
-K = 5
+maxYield   = refined_i / (raw_i × YIELD_MULT[yt] × (1 + b/100))   every line
+costPerScu = cost / (rawScu × COST_MULT[ct])                      single-material orders only
+timePerScu = time / (rawScu × tm)                                 single-material orders only
 ```
 
-- **baseline:** shipped defaults (5.4). UEX only provides 1–3 ratings, so the baseline is the provisional table in §5.4, corrected by real quotes.
-- **shared:** `aggregates.json`, current patch only.
-- **own:** the user's saved orders from the current patch that have a full terminal quote.
+Each quote allows an interval of values (yield and time rounded to nearest, cost rounded down). With several own quotes the value is the middle of the interval they all allow, so all of them are reproduced exactly; if they disagree (a typo), the median of their midpoints. A multi-material order informs yield only, since cost and time can't be split between materials. Samples carry `methodId`, `bonusPct`, `capacityPct` and `patch`; other patches are ignored.
 
-The UI shows the dominant source: "Baseline", "37 shared quotes" or "Your 4 orders". Before 5 data points exist, it shows "Low confidence".
+`calibrateMaterials` returns per material `{ maxYield, costPerScu, timePerScu, source, sources, n, lowConfidence }`, where `source` is `assumed` when any of the three values is still assumed (otherwise `own`, `shared` or `game-quote`) and `lowConfidence = (source === "assumed")`.
 
-### 5.4 Baseline defaults (provisional, calibrated by quotes)
+The calculator shows the source of each material in the load, e.g. "Construction Pieces: game quote · Titanium: assumed (est.)". Only when a material of the load is assumed: the notice "Some values are assumptions (est.). Save a terminal quote for this material to make them exact." and a `~` on the method rows.
 
-| Method id | yield | cost/SCU (aUEC) | base time (s) | s per SCU |
-|---|---|---|---|---|
-| dinyx-solventation | 0.93 | 60 | 300 | 1500 |
-| pyrometric-chromalysis | 0.90 | 150 | 300 | 860 |
-| ferron-exchange | 0.89 | 95 | 300 | 780 |
-| thermonatic-deposition | 0.82 | 55 | 300 | 740 |
-| electrostarolysis | 0.82 | 90 | 300 | 490 |
-| kazen-winnowing | 0.75 | 50 | 300 | 450 |
-| gaskin-process | 0.80 | 160 | 300 | 280 |
-| cormack | 0.72 | 95 | 300 | 200 |
-| xcr-reaction | 0.70 | 165 | 300 | 180 |
+### 5.4 (removed in v1.5)
 
-These are provisional starting values (`shared/baseline.js`). The relative ordering matches the Star Citizen Wiki ratings; the numbers are replaced by shared and own quotes through blending (5.3). A method in `static-data.json` without a baseline row gets the per-column median of this table and is flagged `missingBaseline`.
+The provisional per-method baseline table and the K = 5 blending were replaced by the game model (5.1) and calibration (5.3).
 
-### 5.5 Nightly fit (worker)
+### 5.5 Nightly fit (worker, Task 12)
 
-From current-patch quotes, per method:
-- yield sample per material line = `refined / (raw × (1 + bonus/100))` → median.
-- cost sample = `cost / totalRawScu` → median.
-- time: least-squares line `time = T0 + k × totalRawScu`. It needs `n >= 5` and at least 2 different sizes; otherwise `T0 = 0`, `k = median(time / totalRawScu)`.
+From current-patch shared quotes, per material: back-solve each quote as in 5.3 and store the median and count of `maxYield` (every line), `costPerScu` and `timePerScu` (single-material quotes only).
 
 ### 5.6 Timer input
 
@@ -429,3 +449,4 @@ Footer on every page:
 - 2026-11-20 — v1.2: raw price plausibility filter, browser storage details
 - 2026-11-20 — v1.3: quick order entry from the terminal (cSCU, cost with decimals, generated title), `capacityPct` and `quality`, order form settings, Construction Pieces
 - 2026-11-21 — v1.4: Settings page (backup with import preview, clear all data, preferences, game data, about), Privacy page, backup reminder, new settings keys, UI section updated (comboboxes, material switch, 1300 px two-column breakpoint)
+- 2026-11-21 — v1.5: calculation engine rewritten on the game's tier model (method tiers, per-material base values, rounding rules from 9 terminal quotes), per-material calibration replaces baseline + blending, §5.4 removed

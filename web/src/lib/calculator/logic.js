@@ -120,10 +120,10 @@ export function restoreInputs(raw, staticData, unit = "cscu") {
 
 /**
  * Runs the estimate when inputs are valid; otherwise result null + reason.
- * @param {{ stationId: string, parsed: ParsedLine[], staticData: StaticData | null, prices: Prices | null, params: Record<string, any> | null }} input
+ * @param {{ stationId: string, parsed: ParsedLine[], staticData: StaticData | null, prices: Prices | null, materialParams: Record<string, any> | null }} input
  * @returns {{ result: EstimateResult | null, reason: string | null }}
  */
-export function computeEstimate({ stationId, parsed, staticData, prices, params }) {
+export function computeEstimate({ stationId, parsed, staticData, prices, materialParams }) {
   if (!staticData) return { result: null, reason: "Game data isn't available yet." };
   const lines = parsed.filter((l) => !l.blank);
   if (!stationId && lines.length === 0) return { result: null, reason: "Pick a station and add at least one material." };
@@ -138,7 +138,7 @@ export function computeEstimate({ stationId, parsed, staticData, prices, params 
       materials: lines.map((l) => ({ materialId: l.materialId, rawCScu: /** @type {number} */ (l.cScu) })),
       staticData,
       prices,
-      params,
+      materialParams,
     });
     return { result, reason: null };
   } catch (err) {
@@ -212,32 +212,34 @@ export function groupMaterials(staticData) {
   ].filter((g) => g.items.length > 0);
 }
 
-/**
- * Where the parameters come from, by the most common source across methods.
- * @param {Record<string, { source: string, n: number }> | null} params
- * @param {number} ownCount own samples in the current patch
- * @returns {{ source: "baseline" | "shared" | "own", text: string }}
- */
-export function dataSource(params, ownCount) {
-  const list = Object.values(params ?? {});
-  /** @type {Record<string, number>} */
-  const counts = { baseline: 0, shared: 0, own: 0 };
-  for (const p of list) counts[p.source] = (counts[p.source] ?? 0) + 1;
-  const source = /** @type {"baseline" | "shared" | "own"} */ (
-    ["own", "shared", "baseline"].reduce((best, s) => (counts[s] > counts[best] ? s : best), "baseline")
-  );
-  if (source === "own") return { source, text: `Based on your ${ownCount} order${ownCount === 1 ? "" : "s"}` };
-  if (source === "shared") {
-    const n = Math.max(0, ...list.filter((p) => p.source === "shared").map((p) => p.n));
-    return { source, text: `Based on ${n} shared quote${n === 1 ? "" : "s"}` };
-  }
-  return { source, text: "Based on baseline estimates" };
-}
+/** Words for each calibration source (SPEC §5.3). */
+export const SOURCE_WORDS = Object.freeze({ "game-quote": "game quote", shared: "shared quotes", own: "your orders", assumed: "assumed (est.)" });
 
-/** @param {Record<string, { lowConfidence: boolean }> | null} params */
-export function allLowConfidence(params) {
-  const list = Object.values(params ?? {});
-  return list.length > 0 && list.every((p) => p.lowConfidence);
+/**
+ * Where the base values of each material in the load come from, e.g.
+ * "Construction Pieces: game quote · Titanium: assumed (est.)".
+ * @param {Record<string, { source: string, n: number }> | null} materialParams
+ * @param {string[]} materialIds the load (duplicates and blanks ignored)
+ * @param {StaticData | null} staticData
+ * @returns {{ text: string, assumed: boolean, items: { materialId: string, name: string, source: string }[] }}
+ */
+export function sourceLine(materialParams, materialIds, staticData) {
+  const ids = [...new Set(materialIds.filter(Boolean))];
+  const items = ids.map((materialId) => {
+    const p = materialParams?.[materialId];
+    const name = staticData?.materials.find((m) => m.id === materialId)?.name ?? materialId;
+    return { materialId, name, source: p?.source ?? "assumed", n: p?.n ?? 0 };
+  });
+  /** @param {{ source: string, n: number }} i */
+  const words = (i) => {
+    const w = /** @type {Record<string, string>} */ (SOURCE_WORDS)[i.source] ?? i.source;
+    return (i.source === "own" || i.source === "shared") && i.n > 0 ? `${w} (${i.n})` : w;
+  };
+  return {
+    text: items.map((i) => `${i.name}: ${words(i)}`).join(" · "),
+    assumed: items.some((i) => i.source === "assumed"),
+    items: items.map(({ materialId, name, source }) => ({ materialId, name, source })),
+  };
 }
 
 /**

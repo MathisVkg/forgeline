@@ -2,7 +2,7 @@
 // Calculator state (Svelte 5 runes). Inputs persist in sessionStorage
 // ("forgeline.calculator", quantities as cSCU) so a reload or a trip to the
 // form keeps them. Quantities are typed in the shared unit (prefs).
-import { baselineFor, blendParams, ownSamplesFromOrders, samplesForLoad } from "@forgeline/shared";
+import { calibrateMaterials, materialDefaults, ownSamplesFromOrders } from "@forgeline/shared";
 import { gameData } from "../stores/gameData.svelte.js";
 import { ordersState } from "../stores/orders.svelte.js";
 import { prefs } from "../stores/prefs.svelte.js";
@@ -10,15 +10,14 @@ import { convertText } from "../quantity.js";
 import { toggleMaterialLine } from "../pickers.js";
 import {
   MAX_CALC_LINES,
-  allLowConfidence,
   computeEstimate,
-  dataSource,
   effectiveSelection,
   emptyLine,
   parseLines,
   restoreInputs,
   serializeInputs,
   sortMethods,
+  sourceLine,
 } from "./logic.js";
 
 export const STORAGE_KEY = "forgeline.calculator";
@@ -53,17 +52,16 @@ class CalculatorState {
   #nextKey = 1;
 
   parsed = $derived(parseLines(this.lines, this.unit));
-  allOwnSamples = $derived(ownSamplesFromOrders(ordersState.orders, gameData.staticData));
-  /** Own samples of the load's material kind only; a mixed load uses none. */
-  load = $derived(samplesForLoad(this.allOwnSamples, this.lines.map((l) => l.materialId), gameData.staticData));
-  ownCount = $derived(this.load.samples.filter((s) => s.patch === gameData.staticData?.patch).length);
-  params = $derived(
+  /** Own terminal quotes, one sample per material line (SPEC §5.3). */
+  ownSamples = $derived(ownSamplesFromOrders(ordersState.orders, gameData.staticData));
+  /** Base values per material: own quotes, else shared, else the game-model default. */
+  materialParams = $derived(
     gameData.staticData
-      ? blendParams({
-          baseline: baselineFor(gameData.staticData.methods.map((m) => m.id)),
+      ? calibrateMaterials({
+          defaults: materialDefaults(gameData.staticData.materials),
           aggregates: gameData.aggregates,
-          ownSamples: this.load.samples,
-          patch: gameData.staticData.patch ?? "",
+          ownSamples: this.ownSamples,
+          patch: gameData.staticData.patch ?? null,
         })
       : null,
   );
@@ -73,15 +71,16 @@ class CalculatorState {
       parsed: this.parsed,
       staticData: gameData.staticData,
       prices: gameData.prices,
-      params: this.params,
+      materialParams: this.materialParams,
     }),
   );
   result = $derived(this.computed.result);
   reason = $derived(this.computed.reason);
   rows = $derived(this.result ? sortMethods(this.result, this.sortBy) : []);
   selected = $derived(effectiveSelection(this.result, this.selectedMethodId));
-  source = $derived(dataSource(this.params, this.ownCount));
-  provisional = $derived(allLowConfidence(this.params));
+  /** Source of each material's values; provisional when any is assumed. */
+  source = $derived(sourceLine(this.materialParams, this.lines.map((l) => l.materialId), gameData.staticData));
+  provisional = $derived(this.source.assumed);
   totalRawCScu = $derived(this.parsed.reduce((sum, l) => sum + (l.cScu ?? 0), 0));
 
   /** Material picker: add a line, or remove it when selected again. @param {string} materialId */

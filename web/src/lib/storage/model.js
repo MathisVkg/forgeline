@@ -26,7 +26,7 @@ const DAY_MS = 86_400_000;
  * @property {number} revenueAuec
  * @property {number} netAuec
  * @property {number} perHourAuec
- * @property {string} paramsSource "baseline" | "shared" | "own"
+ * @property {string} paramsSource "game-quote" | "shared" | "own" | "assumed" ("baseline" in orders saved before v1.5)
  * @property {string | null} pricesGeneratedAt
  */
 /**
@@ -347,7 +347,7 @@ export function snapshotFromEstimate(result, methodId, pricesGeneratedAt) {
     revenueAuec: m.revenueAuec,
     netAuec: m.netAuec,
     perHourAuec: m.perHourAuec,
-    paramsSource: m.params.source ?? "baseline",
+    paramsSource: m.params.source ?? "assumed",
     pricesGeneratedAt: pricesGeneratedAt ?? null,
   };
 }

@@ -1,5 +1,6 @@
 // @ts-check
 // Pure helpers for the station / method comboboxes and the material buttons.
+import { METHOD_TIERS } from "@forgeline/shared";
 
 const SYSTEM_ORDER = ["Stanton", "Pyro", "Nyx"];
 export const MAX_RECENT_STATIONS = 3;
@@ -78,14 +79,14 @@ export function stationOptions(stations) {
 }
 
 /**
- * Method options (flat), sorted by name, with the rating line.
+ * Method options (flat), sorted by name, with the terminal's tier line.
  * @param {MethodLike[] | undefined} methods
  * @returns {ComboOption[]}
  */
 export function methodOptions(methods) {
   return [...(methods ?? [])]
     .sort((a, b) => a.name.localeCompare(b.name))
-    .map((m) => ({ id: m.id, label: m.name, sub: methodRatingText(m.uex), display: m.name, group: "", keys: [normalizeQuery(m.name)] }));
+    .map((m) => ({ id: m.id, label: m.name, sub: methodTerminalText(m), display: m.name, group: "", keys: [normalizeQuery(m.name)] }));
 }
 
 /**
@@ -240,7 +241,16 @@ const RATING_WORDS = {
 };
 
 /**
- * "High yield · Low cost · Slow" from the UEX 1–3 ratings.
+ * The refinery terminal's line ("High yield · Low cost · Slowest", SPEC §5.1);
+ * a method the game model doesn't know yet falls back to the UEX ratings.
+ * @param {MethodLike} method
+ */
+export function methodTerminalText(method) {
+  return Object.hasOwn(METHOD_TIERS, method.id) ? METHOD_TIERS[method.id].terminalText : methodRatingText(method.uex);
+}
+
+/**
+ * "High yield · Low cost · Slow" from the UEX 1–3 ratings (fallback only).
  * @param {Record<string, number> | undefined} uex
  */
 export function methodRatingText(uex) {
